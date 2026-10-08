@@ -1,0 +1,15 @@
+MAIN    START
+
+        LAD     GR1,DATA
+        LAD     GR1,2,GR1
+        LD      GR0,0,GR1
+        LAD     GR1,2,GR1
+        LD     GR2,0,GR1
+        ST      GR0,0,GR1
+        LAD     GR1,-2,GR1
+        ST      GR2,0,GR1
+        RET
+
+DATA    DC      10,20,30,40,50
+
+        END
