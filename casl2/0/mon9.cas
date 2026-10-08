@@ -1,0 +1,15 @@
+MAIN    START
+
+        LD      GR0,A
+        LD      GR1,GR0
+        ADDA    GR0,GR0
+        ADDA    GR0,GR0
+        ADDA    GR0,GR0
+        SUBA    GR0,GR1
+        ST      GR0,ANS
+        RET
+
+A       DC      9
+ANS     DS      1
+
+        END
