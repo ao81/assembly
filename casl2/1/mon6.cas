@@ -1,0 +1,12 @@
+MAIN    START
+
+        LAD     GR1,DATA
+        LAD     GR1,1,GR1
+        LD      GR0,0,GR1
+        ST      GR0,ANS
+        RET
+
+DATA    DC      8,16,24
+ANS     DS      1
+
+        END
