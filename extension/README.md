@@ -123,20 +123,19 @@ Marketplaceには未公開です。GitHub ReleaseへのVSIX追加だけでMarket
 
 mainにこのバージョンをプッシュすると、GitHub Actionsがテストとパッケージ作成後、`v0.1.9` ReleaseにVSIXを添付します。リリース作成者はGitHub Actionsです。
 
-## HTTPSからvscode.devに導入
+## vscode.devでの導入制限（2026-10-09確認）
 
-ビルド済みのWeb拡張を次のHTTPS URLで配信します。
+実際のvscode.devで「Developer: Install Extension From Location...」を試したところ、
+GitHub RawのURLからの導入に失敗しました。コンソールにはmanifest取得のFailed to fetchが記録され、
+ページのContent-Security-Policyのconnect-srcにはraw.githubusercontent.comとcdn.jsdelivr.netが含まれていませんでした。
+配信元のHTTP 200とCORS許可だけでは導入できません。
+以前ここで案内していたjsDelivr/GitHub RawのURLは、通常のvscode.dev向けの導入手順として使用しないでください。
+同じ画面のコマンドパレットではVSIXのインストールコマンドも見つかりませんでした。
 
-https://cdn.jsdelivr.net/gh/ao81/assembly@main/extension/
+Web用バンドルは作成済みですが、通常のvscode.devへの導入・実行成功は未確認です。
+通常配布にはVisual Studio MarketplaceへのWeb拡張公開が必要です（現在未公開）。
+拡張のpublisherはassembly-localです。GitHubのao81アカウントとは別に、Marketplace側のpublisher所有権と公開権限が必要です。
+公式のlocalhostからの開発用導入は別途ローカルHTTPSサーバーが必要であり、ブラウザだけで完結する手順ではありません。
 
-vscode.devでコマンドパレット（Ctrl+Shift+P）を開き、
-`Developer: Install Extension From Location...` を実行して上記URLを入力します。
-VSIXファイルではなく、package.jsonが置かれているディレクトリのURLを指定してください。
-導入後に.casファイルを開き、`CASL II: 実行結果を表で表示` を実行します。
-
-配信にはGitHubの公開ファイルを読み込むjsDelivr CDNを使用します。
-CDNは拡張機能ファイルの配信のみを行い、CASL IIプログラムはブラウザ内で実行します。
-Web版を更新するときは `pnpm run build:web` を実行後、
-`git add -f dist/web/extension.js` で生成ファイルもコミットします。
-mainのURLはCDNのキャッシュで更新が遅れる場合があります。
-特定版をすぐに利用する場合はURLの `main` をそのコミットSHAに置き換えてください。
+ビルド済みファイルは残してあります。Web版更新時には `pnpm run build:web` を実行し、
+`git add -f dist/web/extension.js` で生成物もコミットしてください。
