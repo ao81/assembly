@@ -95,15 +95,16 @@ test('実際に使用したGRだけを表示し、参照のみ・指標用も残
   const html = renderTrace(result, 'test.cas');
   for (const i of [0, 1, 2, 7]) assert.ok(html.includes(`>GR${i}</th>`));
   for (const i of [3, 4, 5, 6]) assert.ok(!html.includes(`>GR${i}</th>`));
-  assert.ok(!renderTrace(run(' RET'), 'test.cas').includes('>GR'));
+  assert.ok(!/>GR[0-7]<\/th>/.test(renderTrace(run(' RET'), 'test.cas')));
 });
 
-test('変数表と配列の折り畳みを表示', () => {
+test('変数選択と配列のページ操作を表示', () => {
   const html = renderTrace(sample('variables.cas'), 'variables.cas');
-  assert.ok(html.includes('>A</th>'));
-  assert.ok(html.includes('>B</th>'));
+  assert.ok(html.includes('>A</option>'));
+  assert.ok(html.includes('>B</option>'));
   assert.ok(html.includes('data-word="30"'));
   assert.ok(!html.includes('README参照'));
   const array = renderTrace(run(' RET\nDATA DS 10'), 'array.cas');
-  assert.ok(array.includes('残り2語'));
+  assert.ok(array.includes('id="page-next"'));
+  assert.ok(array.includes('DATA [10語]'));
 });

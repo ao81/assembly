@@ -1,0 +1,13 @@
+TRACE   START
+        LD      GR1,A
+        LAD     GR2,0
+LOOP    ADDA    GR2,GR1
+        ST      GR2,TOTAL
+        ADDA    GR1,B
+        ST      GR1,A
+        JNZ     LOOP
+        RET
+A       DC      3
+B       DC      -1
+TOTAL   DS      1
+        END

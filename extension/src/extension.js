@@ -5,8 +5,9 @@ const { assemble, executeWithInput, encodeInput, CaslError } = require('./core')
 const { renderTrace } = require('./render');
 const { formatSource } = require('./formatter');
 
-function readInput(request) {
+function readInput(request, token) {
   return new Promise(resolve => {
+    if (token?.isCancellationRequested) { resolve(undefined); return; }
     const box = vscode.window.createInputBox();
     const eof = { iconPath: new vscode.ThemeIcon('debug-stop'), tooltip: 'EOF（入力終了）' };
     box.title = `IN ${request.buffer},${request.length}（${request.line}行）`;
@@ -28,6 +29,7 @@ function readInput(request) {
     box.onDidTriggerButton(button => { if (button === eof) finish(null); }),
     box.onDidHide(() => finish(undefined)));
     box.show();
+    if (token) subscriptions.push(token.onCancellationRequested(() => finish(undefined)));
   });
 }
 
@@ -50,30 +52,54 @@ function activate(context) {
   context.subscriptions.push(diagnostics, vscode.workspace.onDidChangeTextDocument(event => diagnostics.delete(event.document.uri)),
     vscode.workspace.onDidCloseTextDocument(document => diagnostics.delete(document.uri)));
   let running = false;
+  async function run(uri, state) {
+    const post = message => { if (state.panel && !state.disposed) void state.panel.webview.postMessage(message); };
+    if (running) {
+      post({ type: 'refreshError', message: '別の実行が完了してから更新してください。' });
+      return;
+    }
+    running = true;
+    state.cancellation = new vscode.CancellationTokenSource();
+    let document, version;
+    try {
+      // Reopen the bound URI, never the currently active editor. Open dirty documents are reused.
+      document = await vscode.workspace.openTextDocument(uri);
+      if (state.disposed) return;
+      version = document.version;
+      diagnostics.delete(uri);
+      const result = await executeWithInput(assemble(document.getText()), request => readInput(request, state.cancellation.token));
+      if (state.disposed) return;
+      if (!state.panel) {
+        const panel = vscode.window.createWebviewPanel('casl2.trace', 'CASL II 実行履歴', vscode.ViewColumn.Beside, { enableScripts: true, localResourceRoots: [] });
+        state.panel = panel;
+        const listener = panel.webview.onDidReceiveMessage(message => {
+          if (message?.type === 'refresh') return run(uri, state);
+        });
+        panel.onDidDispose(() => { state.disposed = true; state.cancellation?.cancel(); listener.dispose(); });
+        context.subscriptions.push(panel);
+      }
+      state.panel.webview.html = renderTrace(result, vscode.workspace.asRelativePath(uri));
+    } catch (error) {
+      if (state.disposed) return;
+      if (error instanceof CaslError && document?.version === version && !document.isClosed) {
+        const line = Math.max(0, Math.min(document.lineCount - 1, error.line - 1));
+        diagnostics.set(document.uri, [new vscode.Diagnostic(document.lineAt(line).range, error.message, vscode.DiagnosticSeverity.Error)]);
+      }
+      post({ type: 'refreshError', message: '更新失敗（前回の結果を表示中）: ' + (error.message || String(error)) });
+      vscode.window.showErrorMessage(error.message || String(error));
+    } finally {
+      state.cancellation.dispose();
+      state.cancellation = undefined;
+      running = false;
+      post({ type: 'refreshComplete' });
+    }
+  }
   context.subscriptions.push(vscode.commands.registerCommand('casl2.runTrace', async () => {
-    if (running) return;
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document.languageId !== 'casl2') {
       vscode.window.showInformationMessage('.casファイルを開いて実行してください。'); return;
     }
-    const document = editor.document;
-    diagnostics.delete(document.uri);
-    const version = document.version;
-    running = true;
-    try {
-      const result = await executeWithInput(assemble(document.getText()), readInput);
-      const panel = vscode.window.createWebviewPanel('casl2.trace', 'CASL II 実行履歴', vscode.ViewColumn.Beside, { enableScripts: true, localResourceRoots: [] });
-      panel.webview.html = renderTrace(result, vscode.workspace.asRelativePath(document.uri));
-      context.subscriptions.push(panel);
-    } catch (error) {
-      if (error instanceof CaslError && document.version === version && !document.isClosed) {
-        const line = Math.max(0, Math.min(document.lineCount - 1, error.line - 1));
-        diagnostics.set(document.uri, [new vscode.Diagnostic(document.lineAt(line).range, error.message, vscode.DiagnosticSeverity.Error)]);
-      }
-      vscode.window.showErrorMessage(error.message || String(error));
-    } finally {
-      running = false;
-    }
+    await run(editor.document.uri, { panel: undefined, disposed: false });
   }));
 }
 module.exports = { activate };
