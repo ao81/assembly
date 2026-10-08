@@ -1,0 +1,16 @@
+MAIN    START
+
+        LD      GR1,ONE
+        LD      GR0,DATA,GR1
+        LD      GR1,FOUR
+        LD      GR2,DATA,GR1
+        ST      GR0,DATA,GR1
+        LD      GR1,ONE
+        ST      GR2,DATA,GR1
+        RET
+
+DATA    DC      8,13,21,34,55
+ONE     DC      1
+FOUR    DC      4
+
+        END
