@@ -1,0 +1,15 @@
+MAIN    START
+
+        LD      GR0,A
+        ST      GR0,TEMP
+        LD      GR0,B
+        ST      GR0,A
+        LD      GR0,TEMP
+        ST      GR0,B
+        RET
+
+A       DC      18
+B       DC      7
+TEMP    DS      1
+
+        END
