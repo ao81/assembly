@@ -1,0 +1,15 @@
+MAIN    START
+
+        LD      GR1,ONE
+        LD      GR0,DATA,GR1
+        LD      GR1,THREE
+        ADDA    GR0,DATA,GR1
+        ST      GR0,ANS
+        RET
+
+DATA    DC      4,9,15,6
+ANS     DS      1
+ONE     DC      1
+THREE   DC      3
+
+        END
