@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
 
-function setup() {
+function setup(web = false) {
   const commands = new Map(), panels = [], errors = [], disposable = () => ({ dispose() {} });
   const document = { uri: 'file:///original.cas', languageId: 'casl2', version: 1, lineCount: 4, isClosed: false,
     source: 'TEST START\n LAD GR1,3\n RET\n END', getText() { return this.source; }, lineAt() { return { range: {} }; } };
@@ -23,8 +23,13 @@ function setup() {
     ViewColumn: { Beside: 2 }, Diagnostic: class {}, DiagnosticSeverity: { Error: 0 },
   };
   const module = { exports: {} };
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/extension.js'), 'utf8'), {
-    module, require: name => name === 'vscode' ? vscode : require(path.join(__dirname, '../src', name)),
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, web ? '../dist/web/extension.js' : '../src/extension.js'), 'utf8'), {
+    module, exports: module.exports, crypto: require('node:crypto').webcrypto,
+    require: name => {
+      if (name === 'vscode') return vscode;
+      assert.equal(web, false, 'Web bundle must not require Node.js or other modules');
+      return require(path.join(__dirname, '../src', name));
+    },
   });
   module.exports.activate({ subscriptions: [] });
   return { commands, panels, document, vscode, errors };
@@ -62,3 +67,23 @@ test('更新失敗では前回結果を保ち、エラーを示して再試行�
   await panel.receive({ type: 'refresh' });
   assert.ok(panel.messages.some(m => m.type === 'refreshError' && m.message.includes('File missing')));
 });
+
+for (const web of [false, true]) {
+  test(`デスクトップ/Webバンドルで実行・更新・整形とCSPが動作 (${web})`, async () => {
+    const app = setup(web);
+    await app.commands.get('casl2.runTrace')();
+    assert.deepEqual(app.errors, []);
+    const panel = app.panels[0];
+    assert.match(panel.webview.html, /data-word="3"/);
+    assert.match(panel.webview.html, /script-src 'nonce-[a-f0-9]{32}'/);
+    assert.match(panel.webview.html, /function variableHistory/);
+    const oldHtml = panel.webview.html;
+    app.document.source = 'TEST START\n LAD GR1,5\n RET\n END';
+    app.document.version++;
+    await panel.receive({ type: 'refresh' });
+    assert.match(panel.webview.html, /data-word="5"/);
+    assert.notEqual(panel.webview.html, oldHtml);
+    assert.equal(typeof app.commands.get('casl2.alignColumns'), 'function');
+    assert.deepEqual(app.errors, []);
+  });
+}

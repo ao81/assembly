@@ -1,14 +1,11 @@
 'use strict';
 
-const { randomBytes } = require('node:crypto');
-const fs = require('node:fs');
-const path = require('node:path');
+const { createNonce, client } = require('./render-platform');
 const escape = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const hex = n => n.toString(16).toUpperCase().padStart(4, '0');
 
 function renderTrace(result, name) {
-  const nonce = randomBytes(16).toString('hex');
-  const client = fs.readFileSync(path.join(__dirname, 'trace-model.js'), 'utf8') + '\n' + fs.readFileSync(path.join(__dirname, 'trace-view.js'), 'utf8');
+  const nonce = createNonce();
   const payload = JSON.stringify({ variables: result.variables, rows: result.rows.map(({ step, source, accesses }) => ({ step, source, accesses })) }).replace(/</g, '\\u003c');
   const used = new Set(result.rows.flatMap(row => [...row.reads, ...row.writes]));
   const registers = Array.from({ length: 8 }, (_, i) => i).filter(i => used.has(i));

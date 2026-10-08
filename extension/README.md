@@ -7,7 +7,7 @@
 
 ### VSIXからインストール
 
-VS Codeの拡張機能ビューの「…」から「VSIXからのインストール…」を選び、`casl2-trace-0.1.8.vsix`を指定します。
+VS Codeの拡張機能ビューの「…」から「VSIXからのインストール…」を選び、`casl2-trace-0.1.9.vsix`を指定します。
 インストール後に`.cas`ファイルを開き、「CASL II: 実行結果を表で表示」を実行してください。
 これはローカル配布用パッケージです。識別子は`assembly-local.casl2-trace`で、Marketplaceには公開していません。
 
@@ -18,7 +18,7 @@ VS Codeの拡張機能ビューの「…」から「VSIXからのインストー
 3. 新しく開いた拡張開発ホストで `sum.cas` または `overflow.cas` を開く。
 4. エディター右上の実行ボタン、またはコマンドパレットの「CASL II: 実行結果を表で表示」を実行する。
 
-ビルドや追加パッケージのインストールは不要です。起動設定はextensionフォルダーを開くことを前提にしています。
+デスクトップの開発用起動にはビルドは不要です。Web版とVSIXの作成には `pnpm install --frozen-lockfile` を実行してください。起動設定はextensionフォルダーを開くことを前提にしています。
 未保存の編集内容も実行対象です。入力はローカルで処理し、外部サイトに送信しません。
 
 ## 表の読み方
@@ -106,3 +106,19 @@ INに入力した-3は2文字の文字列として格納します。数値への
 ## 結果画面から更新（0.1.7）
 
 結果画面上部の「更新」で、元の.casファイルの最新内容を再実行します。未保存の編集も対象です。別のエディターを開いていても元のファイルを使い、同じ結果画面を置き換えます。履歴の選択は初期状態に戻ります。INには再度入力します。更新に失敗した場合は前回結果を保持し、その旨とエラーを表示します。実行中の重複実行は抑止します。HTMLプレビューでは更新ボタンは無効です。
+
+## Web対応（0.1.9）
+
+デスクトップ用の `main` とWeb用の `browser` を同じVSIXに収録します。
+Web版は外部サーバーでCASL IIを実行せず、ブラウザ内で実行・入力・整形・履歴表示を処理します。
+拡張機能の識別子 `assembly-local.casl2-trace` は既存インストールとの互換性のため維持しています。
+
+- `pnpm run build:web`: Web用コードを `dist/web/extension.js` にバンドル。
+- `pnpm test`: Webバンドルを作成し、既存テストとNode.js APIを利用できない環境を模したWeb実行テストを実行。
+- `pnpm run package`: デスクトップ/Web共通のVSIXを作成（Webビルドを自動実行）。
+
+vscode.devでの開発用導入は、公式のWeb拡張手順に従い、ビルド済みextensionフォルダーをHTTPS・CORS対応サーバーで配信して、コマンドパレットの `Developer: Install Extension From Location...` にURLを指定します。
+https://code.visualstudio.com/api/extension-guides/web-extensions#test-your-web-extension-in-vscodedev
+Marketplaceには未公開です。GitHub ReleaseへのVSIX追加だけでMarketplace検索に表示されるわけではありません。
+
+mainにこのバージョンをプッシュすると、GitHub Actionsがテストとパッケージ作成後、`v0.1.9` ReleaseにVSIXを添付します。リリース作成者はGitHub Actionsです。
