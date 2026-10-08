@@ -1,0 +1,13 @@
+MAIN    START
+
+        LD      GR0,A
+        LD      GR1,GR0
+        ADDA    GR0,GR1
+        ADDA    GR0,GR1
+        ST      GR0,ANS
+        RET
+
+A       DC      6
+ANS     DS      1
+
+        END
