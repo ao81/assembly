@@ -1,0 +1,11 @@
+EX6     START
+        LD      GR1,N
+        LAD     GR0,0
+LOOP    ADDA    GR0,GR1
+        SUBA    GR1,=1
+        JPL     LOOP
+        ST      GR0,ANS
+        RET
+N       DC      100
+ANS     DS      1
+        END
