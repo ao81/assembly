@@ -96,7 +96,7 @@ function assemble(source) {
     if (literals.has(text)) return literals.get(text).address;
     if (symbols.has(text)) return symbols.get(text);
     if (/^[A-Z]/.test(text)) throw new CaslError(line, `未定義ラベルです: ${text}`);
-    return numeric(text, line, true);
+    return numeric(text, line);
   };
   for (const node of nodes) {
     const { args, line, address: at, form, opcode } = node;

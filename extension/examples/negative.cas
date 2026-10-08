@@ -1,0 +1,8 @@
+NEGATIVE START
+        LAD     GR1,-3
+        LAD     GR1,-1,GR1
+        LD      GR2,=-3
+        ADDA    GR2,VALUE
+        RET
+VALUE   DC      -3
+        END

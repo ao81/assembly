@@ -8,7 +8,7 @@ function renderTrace(result, name) {
   const nonce = randomBytes(16).toString('hex');
   const used = new Set(result.rows.flatMap(row => [...row.reads, ...row.writes]));
   const registers = Array.from({ length: 8 }, (_, i) => i).filter(i => used.has(i));
-  const number = n => `<span data-word="${n}">${hex(n)}</span>`;
+  const number = n => `<span data-word="${n}">${n >= 32768 ? n - 65536 : n}</span>`;
   const cell = (value, written, read, isFlag = false) => {
     const kind = written ? 'write' : read ? 'read' : '';
     const title = written && read ? '更新・参照' : written ? '更新' : read ? '参照' : '保持';
@@ -55,7 +55,7 @@ tbody tr:hover { background: var(--vscode-list-hoverBackground, #253246); }
 .legend { padding: 2px 5px; }
 </style></head><body>
 <header class="toolbar"><span class="file" title="${escape(name)}">${escape(name)}</span><span class="status ${result.status}" role="status">${escape(status)} · ${result.rows.length}命令</span>
-<select id="base" aria-label="値の表示形式"><option value="hex">16進数</option><option value="signed">10進数</option><option value="binary">2進数</option></select>
+<select id="base" aria-label="値の表示形式"><option value="signed" selected>10進数</option><option value="hex">16進数</option><option value="binary">2進数</option></select>
 <span class="legend write" title="更新・参照の両方の場合もこの表示">更新</span><span class="legend read">参照</span></header>
 ${variables ? `<details class="variables" open><summary>変数 · ${result.variables.length}</summary><div class="table-wrap"><table aria-label="変数の初期値と実行終了時の値"><thead><tr><th scope="col">名前</th><th scope="col">アドレス</th><th scope="col">語数</th><th scope="col">初期値</th><th scope="col">終了時</th></tr></thead><tbody>${variables}</tbody></table></div></details>` : ''}
 <div class="table-wrap trace" tabindex="0" role="region" aria-label="実行履歴"><table aria-label="命令ごとの実行履歴">
