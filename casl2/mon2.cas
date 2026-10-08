@@ -1,0 +1,15 @@
+MAIN    START
+        LD      GR0,A
+        ADDA    GR0,B
+        LD      GR1,A
+        SUBA    GR1,B
+        ST      GR0,SUM
+        ST      GR1,DIFF
+        RET
+
+A       DC      15
+B       DC      8
+SUM     DS      1
+DIFF    DS      1
+
+        END
