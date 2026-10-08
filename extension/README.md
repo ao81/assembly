@@ -122,3 +122,21 @@ https://code.visualstudio.com/api/extension-guides/web-extensions#test-your-web-
 Marketplaceには未公開です。GitHub ReleaseへのVSIX追加だけでMarketplace検索に表示されるわけではありません。
 
 mainにこのバージョンをプッシュすると、GitHub Actionsがテストとパッケージ作成後、`v0.1.9` ReleaseにVSIXを添付します。リリース作成者はGitHub Actionsです。
+
+## HTTPSからvscode.devに導入
+
+ビルド済みのWeb拡張を次のHTTPS URLで配信します。
+
+https://cdn.jsdelivr.net/gh/ao81/assembly@main/extension/
+
+vscode.devでコマンドパレット（Ctrl+Shift+P）を開き、
+`Developer: Install Extension From Location...` を実行して上記URLを入力します。
+VSIXファイルではなく、package.jsonが置かれているディレクトリのURLを指定してください。
+導入後に.casファイルを開き、`CASL II: 実行結果を表で表示` を実行します。
+
+配信にはGitHubの公開ファイルを読み込むjsDelivr CDNを使用します。
+CDNは拡張機能ファイルの配信のみを行い、CASL IIプログラムはブラウザ内で実行します。
+Web版を更新するときは `pnpm run build:web` を実行後、
+`git add -f dist/web/extension.js` で生成ファイルもコミットします。
+mainのURLはCDNのキャッシュで更新が遅れる場合があります。
+特定版をすぐに利用する場合はURLの `main` をそのコミットSHAに置き換えてください。
