@@ -1,0 +1,12 @@
+MAIN    START
+
+        LD      GR0,A
+        LD      GR1,B
+        ST      GR0,B
+        ST      GR1,A
+        RET
+
+A       DC      10
+B       DC      25
+
+        END
