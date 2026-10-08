@@ -1,0 +1,28 @@
+MAIN    START
+
+        LAD     GR1,DATA
+        LAD     GR2,TOTAL
+        LD      GR0,0,GR1
+        ST      GR0,0,GR2
+
+        LAD     GR1,1,GR1
+        LAD     GR2,1,GR2
+        ADDA    GR0,0,GR1
+        ST      GR0,0,GR2
+
+        LAD     GR1,1,GR1
+        LAD     GR2,1,GR2
+        ADDA    GR0,0,GR1
+        ST      GR0,0,GR2
+
+        LAD     GR1,1,GR1
+        LAD     GR2,1,GR2
+        ADDA    GR0,0,GR1
+        ST      GR0,0,GR2
+
+        RET
+
+DATA    DC      3,5,2,7
+TOTAL   DS      4
+
+        END
