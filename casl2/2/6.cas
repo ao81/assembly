@@ -1,0 +1,29 @@
+MAIN    START
+
+LAD     GR1,A
+LAD     GR2,B
+LAD     GR3,RESULT
+
+LD      GR0,0,GR1
+ADDA    GR0,0,GR2
+ST      GR0,0,GR3
+
+LD      GR0,1,GR1
+ADDA    GR0,1,GR2
+ST      GR0,1,GR3
+
+LD      GR0,2,GR1
+ADDA    GR0,2,GR2
+ST      GR0,2,GR3
+
+LD      GR0,3,GR1
+ADDA    GR0,3,GR2
+ST      GR0,3,GR3
+
+RET
+
+A       DC      3,6,9
+B       DC      10,20,30
+RESULT  DS      3
+
+END
