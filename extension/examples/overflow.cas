@@ -1,0 +1,9 @@
+CHECK   START
+        LD      GR1,=32767
+        ADDA    GR1,=1
+        LAD     GR2,0
+        JOV     OVER
+        RET
+OVER    LAD     GR2,1
+        RET
+        END

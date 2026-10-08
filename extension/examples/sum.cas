@@ -1,0 +1,11 @@
+SUM     START
+        LAD     GR1,0
+        LAD     GR2,1
+LOOP    ADDA    GR1,GR2
+        LAD     GR2,1,GR2
+        CPA     GR2,=6
+        JMI     LOOP
+        ST      GR1,RESULT
+        RET
+RESULT  DS      1
+        END

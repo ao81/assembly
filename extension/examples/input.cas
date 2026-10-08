@@ -1,0 +1,7 @@
+INPUT   START
+        IN      BUF,LEN
+        LD      GR1,LEN
+        RET
+BUF     DS      256
+LEN     DS      1
+        END

@@ -1,0 +1,70 @@
+{
+  "name": "casl2-trace",
+  "displayName": "CASL II 実行トレース",
+  "description": "CASL II の命令ごとの実行結果を表で確認する学習用プロトタイプ",
+  "version": "0.1.3",
+  "private": true,
+  "publisher": "assembly-local",
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Education"
+  ],
+  "main": "./src/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "casl2",
+        "aliases": [
+          "CASL II",
+          "CASL2"
+        ],
+        "extensions": [
+          ".cas"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "casl2",
+        "scopeName": "source.casl2",
+        "path": "./syntaxes/casl2.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "casl2.alignColumns",
+        "title": "CASL II: 列を揃える"
+      },
+      {
+        "command": "casl2.runTrace",
+        "title": "CASL II: 実行結果を表で表示",
+        "icon": "$(play)"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        { "command": "casl2.alignColumns", "when": "editorLangId == casl2", "group": "modification" }
+      ],
+      "editor/title": [
+        {
+          "command": "casl2.runTrace",
+          "when": "editorLangId == casl2",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "preview": "node scripts/preview.js",
+    "package": "vsce package --no-dependencies --allow-missing-repository --skip-license --no-rewrite-relative-links"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^4.0.0"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "scopeName": "source.casl2",
+  "patterns": [
+    { "name": "comment.line.semicolon.casl2", "match": ";.*$" },
+    { "name": "string.quoted.single.casl2", "begin": "'", "end": "'", "patterns": [{ "match": "''", "name": "constant.character.escape.casl2" }] },
+    { "name": "keyword.control.casl2", "match": "\\b(?:START|END|DS|DC|LD|ST|LAD|ADDA|ADDL|SUBA|SUBL|AND|OR|XOR|CPA|CPL|SLA|SRA|SLL|SRL|JMI|JNZ|JZE|JUMP|JPL|JOV|PUSH|POP|CALL|RET|SVC|NOP|IN|OUT|RPUSH|RPOP)\\b" },
+    { "name": "variable.language.casl2", "match": "\\bGR[0-7]\\b" },
+    { "name": "constant.numeric.casl2", "match": "#[0-9A-Fa-f]{1,4}\\b|\\b[0-9]+\\b" },
+    { "name": "entity.name.label.casl2", "match": "^[A-Z][A-Z0-9]*\\b" }
+  ]
+}

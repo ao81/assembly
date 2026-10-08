@@ -1,0 +1,11 @@
+.vscode/**
+.pnpm-store/**
+node_modules/**
+test/**
+scripts/**
+preview.html
+pnpm-lock.yaml
+pnpm-workspace.yaml
+.gitignore
+.gitattributes
+*.vsix

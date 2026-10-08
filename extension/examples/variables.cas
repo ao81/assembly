@@ -1,0 +1,9 @@
+CALC    START
+        LD      GR1,A
+        ADDA    GR1,B
+        ST      GR1,ANSWER
+        RET
+A       DC      10
+B       DC      20
+ANSWER  DS      1
+        END
