@@ -7,9 +7,9 @@
 
 ### VSIXからインストール
 
-VS Codeの拡張機能ビューの「…」から「VSIXからのインストール…」を選び、`casl2-trace-0.1.9.vsix`を指定します。
+VS Codeの拡張機能ビューの「…」から「VSIXからのインストール…」を選び、`casl2-trace-0.1.10.vsix`を指定します。
 インストール後に`.cas`ファイルを開き、「CASL II: 実行結果を表で表示」を実行してください。
-これはローカル配布用パッケージです。識別子は`assembly-local.casl2-trace`で、Marketplaceには公開していません。
+識別子は`ao81.casl2-trace`です。0.1.9以前（識別子`assembly-local.casl2-trace`）を入れている場合は、別の拡張機能として扱われるため、先に古い方をアンインストールしてください。
 
 ### 開発用の起動
 
@@ -69,7 +69,7 @@ VSIXの再作成にはNode.jsとpnpmを用意し、`pnpm install --frozen-lockfi
 .casファイルで Shift+Alt+F（ドキュメントのフォーマット）、または右クリック／コマンドパレットの「CASL II: 列を揃える」を実行します。
 ラベル・命令・オペランド・行末コメントを空白で整列します。標準の開始位置は1・9・17・41列目で、長い項目に合わせて後続の列を広げます。
 文字列内の空白・引用符・セミコロン、コメント、空行は保持します。解釈できない行は変更しません。改行はCRLFです。
-保存時にも整形したい場合は、VS CodeのCASL II用設定でフォーマッターにassembly-local.casl2-traceを選び、Format On Saveを有効にしてください。
+保存時にも整形したい場合は、VS CodeのCASL II用設定でフォーマッターにao81.casl2-traceを選び、Format On Saveを有効にしてください。
 
 ## IN（0.1.3）
 
@@ -107,11 +107,15 @@ INに入力した-3は2文字の文字列として格納します。数値への
 
 結果画面上部の「更新」で、元の.casファイルの最新内容を再実行します。未保存の編集も対象です。別のエディターを開いていても元のファイルを使い、同じ結果画面を置き換えます。履歴の選択は初期状態に戻ります。INには再度入力します。更新に失敗した場合は前回結果を保持し、その旨とエラーを表示します。実行中の重複実行は抑止します。HTMLプレビューでは更新ボタンは無効です。
 
+## publisher変更（0.1.10）
+
+Marketplaceへ公開するため、`publisher`を`assembly-local`から`ao81`に変更しました。拡張機能の識別子は`ao81.casl2-trace`になります。
+動作は0.1.9と同じです。フォーマッター設定などで旧識別子を指定している場合は、新しい識別子に設定し直してください。
+
 ## Web対応（0.1.9）
 
 デスクトップ用の `main` とWeb用の `browser` を同じVSIXに収録します。
 Web版は外部サーバーでCASL IIを実行せず、ブラウザ内で実行・入力・整形・履歴表示を処理します。
-拡張機能の識別子 `assembly-local.casl2-trace` は既存インストールとの互換性のため維持しています。
 
 - `pnpm run build:web`: Web用コードを `dist/web/extension.js` にバンドル。
 - `pnpm test`: Webバンドルを作成し、既存テストとNode.js APIを利用できない環境を模したWeb実行テストを実行。
@@ -121,7 +125,7 @@ vscode.devでの開発用導入は、公式のWeb拡張手順に従い、ビル�
 https://code.visualstudio.com/api/extension-guides/web-extensions#test-your-web-extension-in-vscodedev
 Marketplaceには未公開です。GitHub ReleaseへのVSIX追加だけでMarketplace検索に表示されるわけではありません。
 
-mainにこのバージョンをプッシュすると、GitHub Actionsがテストとパッケージ作成後、`v0.1.9` ReleaseにVSIXを添付します。リリース作成者はGitHub Actionsです。
+mainにこのバージョンをプッシュすると、GitHub Actionsがテストとパッケージ作成後、`v<package.jsonのversion>` Releaseを作成し、VSIXを添付します。同じバージョンのReleaseが既にある場合は何もしません。リリース作成者はGitHub Actionsです。
 
 ## vscode.devでの導入制限（2026-10-09確認）
 
@@ -134,7 +138,7 @@ GitHub RawのURLからの導入に失敗しました。コンソールにはmani
 
 Web用バンドルは作成済みですが、通常のvscode.devへの導入・実行成功は未確認です。
 通常配布にはVisual Studio MarketplaceへのWeb拡張公開が必要です（現在未公開）。
-拡張のpublisherはassembly-localです。GitHubのao81アカウントとは別に、Marketplace側のpublisher所有権と公開権限が必要です。
+拡張のpublisherはao81です（0.1.10でassembly-localから変更）。Marketplaceのpublisher IDと`package.json`の`publisher`が一致していないとアップロードできません。
 公式のlocalhostからの開発用導入は別途ローカルHTTPSサーバーが必要であり、ブラウザだけで完結する手順ではありません。
 
 ビルド済みファイルは残してあります。Web版更新時には `pnpm run build:web` を実行し、

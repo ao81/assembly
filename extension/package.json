@@ -2,9 +2,9 @@
   "name": "casl2-trace",
   "displayName": "CASL II 実行トレース",
   "description": "CASL II の命令ごとの実行結果を表で確認する学習用プロトタイプ",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "private": true,
-  "publisher": "assembly-local",
+  "publisher": "ao81",
   "license": "UNLICENSED",
   "engines": {
     "vscode": "^1.85.0"

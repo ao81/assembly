@@ -39,4 +39,4 @@ jobs:
             echo "Release $TAG already exists; leaving existing assets unchanged."
             exit 0
           fi
-          gh release create "$TAG" "casl2-trace-$VERSION.vsix" --target "$GITHUB_SHA" --title "CASL II 実行トレース $VERSION" --notes "デスクトップとvscode.dev向けWeb拡張に対応。Webバンドル、ブラウザ用描画処理、互換性テストを追加。導入方法はextension/README.mdを参照してください。"
+          gh release create "$TAG" "casl2-trace-$VERSION.vsix" --target "$GITHUB_SHA" --title "CASL II 実行トレース $VERSION" --notes "publisherをao81に変更（識別子: ao81.casl2-trace）。0.1.9以前を入れている場合は古い方をアンインストールしてください。導入方法はextension/README.mdを参照してください。"
