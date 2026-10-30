@@ -7,7 +7,7 @@
 
 ### VSIXからインストール
 
-VS Codeの拡張機能ビューの「…」から「VSIXからのインストール…」を選び、`casl2-trace-0.1.10.vsix`を指定します。
+VS Codeの拡張機能ビューの「…」から「VSIXからのインストール…」を選び、`casl2-trace-0.1.11.vsix`を指定します。
 インストール後に`.cas`ファイルを開き、「CASL II: 実行結果を表で表示」を実行してください。
 識別子は`ao81.casl2-trace`です。0.1.9以前（識別子`assembly-local.casl2-trace`）を入れている場合は、別の拡張機能として扱われるため、先に古い方をアンインストールしてください。
 
@@ -33,13 +33,28 @@ VS Codeの拡張機能ビューの「…」から「VSIXからのインストー
 ## 対応範囲
 
 単一のSTART～END、ラベル（英大文字で始まる英大文字・数字8文字以内）、整数DC、DS、数値リテラル。
-LAD、LD、ST、ADDA、ADDL、SUBA、SUBL、AND、OR、XOR、CPA、CPL、JMI、JNZ、JZE、JUMP、JPL、JOV、NOP、最上位RET。
+LAD、LD、ST、ADDA、ADDL、SUBA、SUBL、AND、OR、XOR、CPA、CPL、SLA、SRA、SLL、SRL、JMI、JNZ、JZE、JUMP、JPL、JOV、NOP、最上位RET。
 命令・ラベル・レジスタ名は大文字で入力してください。
 
-現時点ではOUT、文字列DC、シフト、CALL、スタック命令、IN以外のマクロ、SVC、複数プログラム、ステップ操作、ブレークポイントは未対応です。
+現時点ではOUT、文字列DC、CALL、スタック命令、IN以外のマクロ、SVC、複数プログラム、ステップ操作、ブレークポイントは未対応です。
 対応外の命令は行エラーにします。全CASL II仕様への適合を保証する完成版ではありません。
 汎用レジスタ・FR・メモリーは0初期化、SPは0000、ロード先頭は1000です（この環境独自の初期化規約）。
 自己書換え命令は検出して停止します。最大2,000命令で停止し、上限到達と正常終了を区別します。
+
+## シフト命令（0.1.11）
+
+`SLA GR1,1` のように `命令 GRn,adr[,GRx]` で指定します。対象はGR0～GR7、指標レジスタはGR1～GR7です。回数は実効アドレスそのもの（adrと指標レジスタの和を16ビットに丸めた値）であり、その番地のメモリー内容ではありません。`SLL GR1,0,GR2` ならGR2の値だけシフトします。
+
+| 命令 | 動作 | 空いたビット |
+| --- | --- | --- |
+| SLA | 符号ビットを保持して下位15ビットを左シフト | 0 |
+| SRA | 符号ビットを保持して右シフト | 符号ビットと同じ値 |
+| SLL | 全16ビットを左シフト | 0 |
+| SRL | 全16ビットを右シフト | 0 |
+
+OFには最後に押し出されたビット、SFには結果の最上位ビット、ZFには結果が0なら1を設定します。0ビットの場合もSF/ZFを結果から設定し、OFは0にします。16ビット以上の回数も扱います。履歴には対象・指標レジスタの参照、対象レジスタとFRの更新を記録し、メモリー参照は記録しません。
+
+`examples/shifts.cas` で同じ初期値 `#8001` に対する4命令の違いを確認できます。
 
 ## 開発・検証
 
@@ -123,7 +138,7 @@ Web版は外部サーバーでCASL IIを実行せず、ブラウザ内で実行�
 
 vscode.devでの開発用導入は、公式のWeb拡張手順に従い、ビルド済みextensionフォルダーをHTTPS・CORS対応サーバーで配信して、コマンドパレットの `Developer: Install Extension From Location...` にURLを指定します。
 https://code.visualstudio.com/api/extension-guides/web-extensions#test-your-web-extension-in-vscodedev
-Marketplaceには未公開です。GitHub ReleaseへのVSIX追加だけでMarketplace検索に表示されるわけではありません。
+GitHub ReleaseへのVSIX追加だけでは、Visual Studio Marketplaceの公開版は更新されません。Marketplaceの管理画面から既存の拡張に新しいVSIXをアップロードするなど、別途公開操作が必要です。
 
 mainにこのバージョンをプッシュすると、GitHub Actionsがテストとパッケージ作成後、`v<package.jsonのversion>` Releaseを作成し、VSIXを添付します。同じバージョンのReleaseが既にある場合は何もしません。リリース作成者はGitHub Actionsです。
 
@@ -137,7 +152,7 @@ GitHub RawのURLからの導入に失敗しました。コンソールにはmani
 同じ画面のコマンドパレットではVSIXのインストールコマンドも見つかりませんでした。
 
 Web用バンドルは作成済みですが、通常のvscode.devへの導入・実行成功は未確認です。
-通常配布にはVisual Studio MarketplaceへのWeb拡張公開が必要です（現在未公開）。
+通常配布ではVisual Studio Marketplaceで公開したWeb拡張をインストールしてください。
 拡張のpublisherはao81です（0.1.10でassembly-localから変更）。Marketplaceのpublisher IDと`package.json`の`publisher`が一致していないとアップロードできません。
 公式のlocalhostからの開発用導入は別途ローカルHTTPSサーバーが必要であり、ブラウザだけで完結する手順ではありません。
 

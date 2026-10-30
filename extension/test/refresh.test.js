@@ -69,6 +69,16 @@ test('更新失敗では前回結果を保ち、エラーを示して再試行�
 });
 
 for (const web of [false, true]) {
+  test(`デスクトップ/Webでシフト4命令を実行して表示する (${web})`, async () => {
+    const app = setup(web);
+    app.document.source = fs.readFileSync(path.join(__dirname, '../examples/shifts.cas'), 'utf8');
+    await app.commands.get('casl2.runTrace')();
+    assert.deepEqual(app.errors, []);
+    const html = app.panels[0].webview.html;
+    for (const op of ['SLA', 'SRA', 'SLL', 'SRL']) assert.ok(html.includes(op));
+    for (const value of [0x8002, 0xc000, 2, 0x4000]) assert.ok(html.includes(`data-word="${value}"`));
+  });
+
   test(`デスクトップ/Webバンドルで実行・更新・整形とCSPが動作 (${web})`, async () => {
     const app = setup(web);
     await app.commands.get('casl2.runTrace')();

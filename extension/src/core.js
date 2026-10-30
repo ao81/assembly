@@ -3,6 +3,7 @@
 const BASE = 0x1000;
 const binary = { LD: [0x10, 0x14], ADDA: [0x20, 0x24], SUBA: [0x21, 0x25], ADDL: [0x22, 0x26], SUBL: [0x23, 0x27], AND: [0x30, 0x34], OR: [0x31, 0x35], XOR: [0x32, 0x36], CPA: [0x40, 0x44], CPL: [0x41, 0x45] };
 const jumps = { JMI: 0x61, JNZ: 0x62, JZE: 0x63, JUMP: 0x64, JPL: 0x65, JOV: 0x66 };
+const shifts = { SLA: 0x50, SRA: 0x51, SLL: 0x52, SRL: 0x53 };
 const signed = n => n & 0x8000 ? n - 0x10000 : n;
 const word = n => n & 0xffff;
 const reg = text => /^GR[0-7]$/.test(text || '') ? Number(text[2]) : -1;
@@ -63,12 +64,12 @@ function assemble(source) {
     } else if (op === 'NOP' || op === 'RET') {
       if (args.length) fail();
       size = 1; opcode = op === 'NOP' ? 0 : 0x81; form = 'none';
-    } else if (binary[op] || op === 'LAD' || op === 'ST') {
+    } else if (binary[op] || shifts[op] || op === 'LAD' || op === 'ST') {
       if (args.length < 2 || args.length > 3 || reg(args[0]) < 0) fail();
       if (binary[op] && args.length === 2 && reg(args[1]) >= 0) {
         form = 'register'; opcode = binary[op][1]; size = 1;
       } else {
-        form = 'address'; opcode = binary[op] ? binary[op][0] : op === 'LAD' ? 0x12 : 0x11; size = 2;
+        form = 'address'; opcode = binary[op] ? binary[op][0] : shifts[op] || (op === 'LAD' ? 0x12 : 0x11); size = 2;
         if (reg(args[1]) >= 0 || (args.length === 3 && reg(args[2]) < 1)) fail();
       }
     } else if (jumps[op]) {
@@ -189,6 +190,23 @@ function* execution(program, maxSteps = 2000) {
       used.forEach(f => flagReads.add(f));
       const take = { 0x61: flags.SF === 1, 0x62: flags.ZF === 0, 0x63: flags.ZF === 1, 0x64: true, 0x65: flags.SF === 0 && flags.ZF === 0, 0x66: flags.OF === 1 }[code];
       if (take) pr = address;
+    } else if (code >= 0x50 && code <= 0x53) {
+      // The effective address itself is the count; no operand memory is read.
+      let result = readReg(r), overflow = 0;
+      // The 16th logical shift can still emit a 1; after 17 both are stable.
+      for (let i = 0; i < Math.min(address, 17); i++) {
+        if (code === 0x50) {
+          overflow = (result >>> 14) & 1;
+          result = (result & 0x8000) | ((result << 1) & 0x7fff);
+        } else if (code === 0x52) {
+          overflow = result >>> 15;
+          result = word(result << 1);
+        } else {
+          overflow = result & 1;
+          result = (result >>> 1) | (code === 0x51 ? result & 0x8000 : 0);
+        }
+      }
+      writeReg(r, result); setFlags(result, overflow);
     } else if (code !== 0) {
       const value = node.form === 'register' ? readReg(x) : readMemory(address);
       const op = node.op;

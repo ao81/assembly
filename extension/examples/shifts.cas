@@ -1,0 +1,11 @@
+SHIFT   START
+        LAD     GR1,#8001
+        LAD     GR2,#8001
+        LAD     GR3,#8001
+        LAD     GR4,#8001
+        SLA     GR1,1       ; #8002 OF=0 SF=1 ZF=0
+        SRA     GR2,1       ; #C000 OF=1 SF=1 ZF=0
+        SLL     GR3,1       ; #0002 OF=1 SF=0 ZF=0
+        SRL     GR4,1       ; #4000 OF=1 SF=0 ZF=0
+        RET
+        END

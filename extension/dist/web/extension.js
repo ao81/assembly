@@ -15,6 +15,7 @@ var require_core = __commonJS({
     var BASE = 4096;
     var binary = { LD: [16, 20], ADDA: [32, 36], SUBA: [33, 37], ADDL: [34, 38], SUBL: [35, 39], AND: [48, 52], OR: [49, 53], XOR: [50, 54], CPA: [64, 68], CPL: [65, 69] };
     var jumps = { JMI: 97, JNZ: 98, JZE: 99, JUMP: 100, JPL: 101, JOV: 102 };
+    var shifts = { SLA: 80, SRA: 81, SLL: 82, SRL: 83 };
     var signed = (n) => n & 32768 ? n - 65536 : n;
     var word = (n) => n & 65535;
     var reg = (text) => /^GR[0-7]$/.test(text || "") ? Number(text[2]) : -1;
@@ -88,7 +89,7 @@ var require_core = __commonJS({
           size = 1;
           opcode = op === "NOP" ? 0 : 129;
           form = "none";
-        } else if (binary[op] || op === "LAD" || op === "ST") {
+        } else if (binary[op] || shifts[op] || op === "LAD" || op === "ST") {
           if (args.length < 2 || args.length > 3 || reg(args[0]) < 0) fail();
           if (binary[op] && args.length === 2 && reg(args[1]) >= 0) {
             form = "register";
@@ -96,7 +97,7 @@ var require_core = __commonJS({
             size = 1;
           } else {
             form = "address";
-            opcode = binary[op] ? binary[op][0] : op === "LAD" ? 18 : 17;
+            opcode = binary[op] ? binary[op][0] : shifts[op] || (op === "LAD" ? 18 : 17);
             size = 2;
             if (reg(args[1]) >= 0 || args.length === 3 && reg(args[2]) < 1) fail();
           }
@@ -248,6 +249,22 @@ var require_core = __commonJS({
           used.forEach((f) => flagReads.add(f));
           const take = { 97: flags.SF === 1, 98: flags.ZF === 0, 99: flags.ZF === 1, 100: true, 101: flags.SF === 0 && flags.ZF === 0, 102: flags.OF === 1 }[code];
           if (take) pr = address;
+        } else if (code >= 80 && code <= 83) {
+          let result = readReg(r), overflow = 0;
+          for (let i = 0; i < Math.min(address, 17); i++) {
+            if (code === 80) {
+              overflow = result >>> 14 & 1;
+              result = result & 32768 | result << 1 & 32767;
+            } else if (code === 82) {
+              overflow = result >>> 15;
+              result = word(result << 1);
+            } else {
+              overflow = result & 1;
+              result = result >>> 1 | (code === 81 ? result & 32768 : 0);
+            }
+          }
+          writeReg(r, result);
+          setFlags(result, overflow);
         } else if (code !== 0) {
           const value = node.form === "register" ? readReg(x) : readMemory(address);
           const op = node.op;
