@@ -43,6 +43,9 @@ select { font: inherit; padding: 3px; background: var(--vscode-dropdown-backgrou
 .trace { flex: 1; min-height: 140px; }
 .variables { flex-shrink: 0; max-height: 30vh; overflow: auto; }
 .variables > summary { cursor: pointer; font-size: 12px; font-weight: 600; margin-bottom: 5px; }
+.output { flex-shrink: 0; max-height: 20vh; overflow: auto; border: 1px solid var(--vscode-panel-border, #526174); padding: 6px 10px; }
+.output ol { margin: 4px 0; padding-left: 2em; }
+.output code { white-space: pre-wrap; overflow-wrap: anywhere; }
 table { border-collapse: separate; border-spacing: 0; width: 100%; font-family: var(--vscode-editor-font-family, Consolas, monospace); font-size: 12px; }
 th, td { border-right: 1px solid var(--vscode-panel-border, #526174); border-bottom: 1px solid var(--vscode-panel-border, #526174); padding: 5px 7px; white-space: nowrap; text-align: right; }
 thead th { position: sticky; top: 0; background: var(--vscode-editorWidget-background, #263344); z-index: 1; }
@@ -93,6 +96,7 @@ thead .step, thead .source { z-index: 3; background: var(--vscode-editorWidget-b
 <button id="refresh" title="元のファイルの最新内容で再実行">更新</button><span id="refresh-status" role="status"></span>
 <select id="base" aria-label="値の表示形式"><option value="signed" selected>10進数</option><option value="hex">16進数</option><option value="binary">2進数</option></select>
 <span class="legend write" title="更新・参照の両方の場合もこの表示">書込</span><span class="legend read">参照</span></header>
+${result.output?.length ? `<details class="output" open><summary>出力（${result.output.length}件）</summary><ol>${result.output.map(record => `<li><code>${escape(record)}</code></li>`).join('')}</ol></details>` : ''}
 <section class="watchbar" aria-label="表示する変数"><div id="watch-list"></div><span id="watch-count"></span>
 <details id="watch-controls"><summary>変数・配列を追加</summary><div class="toolbar"><label>変数 <select id="variable">${result.variables.map((v, i) => `<option value="${i}">${escape(v.name)}${v.size > 1 ? ' [' + v.size + '語]' : ''}</option>`).join('')}</select></label><label>添字 <input id="offset" type="number" min="0" value="0" step="1"></label><button id="add-watch">列に追加</button></div></details><span id="empty-watch" hidden>「変数・配列を追加」から選択</span></section>
 <nav class="toolbar" aria-label="履歴の操作"><label>表示 <select id="filter"><option value="all">すべての命令</option><option value="write">変数を更新した命令</option><option value="access">変数を参照・更新した命令</option></select></label><button id="previous" aria-label="前のステップ">←</button><button id="next" aria-label="次のステップ">→</button><button id="previous-change">前の更新</button><button id="next-change">次の更新</button><span id="row-count"></span><label><input id="registers" type="checkbox" checked>GR</label><label><input id="machine" type="checkbox">PR・FR・SP・メモリー</label></nav>

@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 function setup(web = false) {
-  const commands = new Map(), panels = [], errors = [], disposable = () => ({ dispose() {} });
+  const commands = new Map(), panels = [], errors = [], prompts = [], disposable = () => ({ dispose() {} });
   const document = { uri: 'file:///original.cas', languageId: 'casl2', version: 1, lineCount: 4, isClosed: false,
     source: 'TEST START\n LAD GR1,3\n RET\n END', getText() { return this.source; }, lineAt() { return { range: {} }; } };
   const vscode = {
@@ -15,12 +15,22 @@ function setup(web = false) {
     workspace: { onDidChangeTextDocument: disposable, onDidCloseTextDocument: disposable,
       async openTextDocument(uri) { assert.equal(uri, document.uri); if (document.missing) throw new Error('File missing'); return document; }, asRelativePath: uri => uri },
     window: { activeTextEditor: { document }, showInformationMessage() {}, showErrorMessage(message) { errors.push(message); },
+      createInputBox() {
+        let accept;
+        return { ...disposable(), value: '<b>ｶ</b>', onDidAccept(handler) { accept = handler; return disposable(); },
+          onDidChangeValue: disposable, onDidTriggerButton: disposable, onDidHide: disposable,
+          show() { prompts.push(this.title); queueMicrotask(accept); } };
+      },
       createWebviewPanel() {
         const panel = { ...disposable(), messages: [], webview: { html: '', onDidReceiveMessage(handler) { panel.receive = handler; return disposable(); }, postMessage(message) { panel.messages.push(message); } }, onDidDispose(handler) { panel.close = handler; } };
         panels.push(panel); return panel;
       } },
-    CancellationTokenSource: class { constructor() { this.token = { isCancellationRequested: false }; } cancel() { this.token.isCancellationRequested = true; } dispose() {} },
-    ViewColumn: { Beside: 2 }, Diagnostic: class {}, DiagnosticSeverity: { Error: 0 },
+    CancellationTokenSource: class {
+      constructor() { this.token = { isCancellationRequested: false, onCancellationRequested: disposable }; }
+      cancel() { this.token.isCancellationRequested = true; }
+      dispose() {}
+    },
+    ViewColumn: { Beside: 2 }, Diagnostic: class {}, DiagnosticSeverity: { Error: 0 }, ThemeIcon: class {},
   };
   const module = { exports: {} };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, web ? '../dist/web/extension.js' : '../src/extension.js'), 'utf8'), {
@@ -32,7 +42,7 @@ function setup(web = false) {
     },
   });
   module.exports.activate({ subscriptions: [] });
-  return { commands, panels, document, vscode, errors };
+  return { commands, panels, document, vscode, errors, prompts };
 }
 
 test('更新は元のURIの未保存内容を読み、同じパネルを置き換える', async () => {
@@ -69,6 +79,22 @@ test('更新失敗では前回結果を保ち、エラーを示して再試行�
 });
 
 for (const web of [false, true]) {
+  test(`デスクトップ/Webでスタック、入力、サブルーチン、出力を実行する (${web})`, async () => {
+    const app = setup(web);
+    app.document.source = fs.readFileSync(path.join(__dirname, '../examples/stack-io.cas'), 'utf8');
+    await app.commands.get('casl2.runTrace')();
+    assert.deepEqual(app.errors, []);
+    assert.match(app.prompts[0], /^IN BUF,LEN/);
+    const html = app.panels[0].webview.html;
+    assert.match(html, /正常終了/);
+    assert.match(html, /出力（2件）/);
+    assert.match(html, /<li><code>Input:<\/code><\/li>/);
+    assert.match(html, /<li><code>&lt;b&gt;ｶ&lt;\/b&gt;<\/code><\/li>/);
+    assert.doesNotMatch(html, /<b>ｶ<\/b>/);
+    assert.match(html, /<td class="machine">FFFF<\/td>/);
+    for (const op of ['PUSH', 'POP', 'CALL', 'RPUSH', 'RPOP', 'NOP', 'IN', 'OUT', 'SVC']) assert.ok(html.includes(op), op);
+  });
+
   test(`デスクトップ/Webでシフト4命令を実行して表示する (${web})`, async () => {
     const app = setup(web);
     app.document.source = fs.readFileSync(path.join(__dirname, '../examples/shifts.cas'), 'utf8');

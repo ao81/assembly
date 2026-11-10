@@ -48,7 +48,7 @@ test('無限ループを上限で止め、途中履歴を残す', () => {
 });
 test('診断: 未定義ラベル、未対応命令、GR0指標、重複ラベル、範囲外、END欠落', () => {
   for (const [body, expected] of [
-    [' LD GR1,MISSING\n RET', /未定義/], [' OUT BUF,LEN', /未対応/],
+    [' LD GR1,MISSING\n RET', /未定義/], [' HALT', /未対応/],
     [' LAD GR1,0,GR0', /オペランド/], ['X NOP\nX RET', /重複/], [' LD GR1,=65536', /範囲外/],
   ]) assert.throws(() => run(body), expected);
   assert.throws(() => assemble('TEST START\n RET'), /STARTとEND/);

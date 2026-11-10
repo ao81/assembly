@@ -16,6 +16,9 @@ var require_core = __commonJS({
     var binary = { LD: [16, 20], ADDA: [32, 36], SUBA: [33, 37], ADDL: [34, 38], SUBL: [35, 39], AND: [48, 52], OR: [49, 53], XOR: [50, 54], CPA: [64, 68], CPL: [65, 69] };
     var jumps = { JMI: 97, JNZ: 98, JZE: 99, JUMP: 100, JPL: 101, JOV: 102 };
     var shifts = { SLA: 80, SRA: 81, SLL: 82, SRL: 83 };
+    var targetOpcodes = { ...jumps, PUSH: 112, CALL: 128, SVC: 240 };
+    var inputSize = 256;
+    var maxOutputSize = 65536;
     var signed = (n) => n & 32768 ? n - 65536 : n;
     var word = (n) => n & 65535;
     var reg = (text) => /^GR[0-7]$/.test(text || "") ? Number(text[2]) : -1;
@@ -35,18 +38,30 @@ var require_core = __commonJS({
       }
       return word(value);
     }
+    function containsData(ranges, address, size) {
+      return ranges.some(([start, end]) => address >= start && address + size <= end);
+    }
+    function inputAreaError(ranges, buffer, lengthAddress) {
+      if (!containsData(ranges, buffer, inputSize) || !containsData(ranges, lengthAddress, 1)) {
+        return "IN\u306B\u306F256\u8A9E\u306E\u5165\u529B\u9818\u57DF\u30681\u8A9E\u306E\u6587\u5B57\u6570\u9818\u57DF\u304C\u5FC5\u8981\u3067\u3059\u3002";
+      }
+      if (lengthAddress >= buffer && lengthAddress < buffer + inputSize) {
+        return "IN\u306E\u5165\u529B\u9818\u57DF\u3068\u6587\u5B57\u6570\u9818\u57DF\u304C\u91CD\u8907\u3057\u3066\u3044\u307E\u3059\u3002";
+      }
+    }
     function assemble2(source) {
       const memory = new Uint16Array(65536), symbols = /* @__PURE__ */ new Map(), instructions = /* @__PURE__ */ new Map();
-      const nodes = [], literals = /* @__PURE__ */ new Map(), variables = [];
+      const nodes = [], literals = /* @__PURE__ */ new Map(), variables = [], dataRanges = [];
       let address = BASE, started = false, ended = false, startTarget, startLine = 1;
       for (const [index, original] of source.split(/\r?\n/).entries()) {
-        const line = index + 1, text = original.split(";")[0].trimEnd();
+        const line = index + 1, text = original.replace(/('(?:[^']|'')*')|;.*/g, "$1").trimEnd();
         if (!text.trim()) continue;
         if (ended) throw new CaslError2(line, "END\u306E\u5F8C\u306B\u306F\u547D\u4EE4\u3092\u66F8\u3051\u307E\u305B\u3093\u3002");
         const match = text.match(/^(?:(\S+)\s+)?\s*([A-Z]+)(?:\s+(.*))?$/);
         if (!match) throw new CaslError2(line, "\u300C\u30E9\u30D9\u30EB \u547D\u4EE4 \u30AA\u30DA\u30E9\u30F3\u30C9\u300D\u306E\u5F62\u5F0F\u3092\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044\u3002");
         const [, label, op, operands = ""] = match;
-        const args = operands ? operands.split(",").map((s) => s.trim()) : [];
+        const separator = operands.includes("'") ? /,(?=(?:[^']*'[^']*')*[^']*$)/ : ",";
+        const args = operands ? operands.split(separator).map((s) => s.trim()) : [];
         if (args.some((s) => !s)) throw new CaslError2(line, "\u7A7A\u306E\u30AA\u30DA\u30E9\u30F3\u30C9\u304C\u3042\u308A\u307E\u3059\u3002");
         if (label) {
           if (!/^[A-Z][A-Z0-9]{0,7}$/.test(label) || reg(label) >= 0) throw new CaslError2(line, `\u4E0D\u6B63\u306A\u30E9\u30D9\u30EB\u3067\u3059: ${label}`);
@@ -66,24 +81,55 @@ var require_core = __commonJS({
           ended = true;
           continue;
         }
-        let size, form, opcode;
+        let size, form, opcode, data;
         const fail = () => {
           throw new CaslError2(line, `${op}\u306E\u30AA\u30DA\u30E9\u30F3\u30C9\u3092\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044\u3002`);
         };
+        if (op === "RPUSH" || op === "RPOP") {
+          if (args.length) fail();
+          const pushing = op === "RPUSH", size2 = pushing ? 2 : 1;
+          if (address + 7 * size2 > 65280) throw new CaslError2(line, "\u30D7\u30ED\u30B0\u30E9\u30E0\u9818\u57DF\u304C\u4E0A\u9650\u3092\u8D85\u3048\u307E\u3057\u305F\u3002");
+          for (let i = 1; i <= 7; i++) {
+            nodes.push({
+              line,
+              source: original,
+              op: pushing ? "PUSH" : "POP",
+              address,
+              size: size2,
+              form: pushing ? "target" : "pop",
+              opcode: pushing ? 112 : 113,
+              args: pushing ? ["0", `GR${i}`] : [`GR${8 - i}`]
+            });
+            address += size2;
+          }
+          continue;
+        }
         if (op === "DC") {
           if (!args.length) fail();
-          args.forEach((a) => numeric(a, line));
-          size = args.length;
+          data = args.flatMap((arg) => {
+            if (!/^'(?:[^']|'')+'$/.test(arg)) return [numeric(arg, line)];
+            try {
+              return Array.from(arg.slice(1, -1).replace(/''/g, "'"), encodeChar);
+            } catch (error) {
+              throw new CaslError2(line, error.message);
+            }
+          });
+          size = data.length;
           form = "data";
         } else if (op === "DS") {
           if (args.length !== 1 || !/^\d+$/.test(args[0])) fail();
           size = numeric(args[0], line, true);
           form = "reserve";
-        } else if (op === "IN") {
+        } else if (op === "IN" || op === "OUT") {
           if (args.length !== 2 || args.some((a) => !/^[A-Z][A-Z0-9]{0,7}$/.test(a) || reg(a) >= 0)) fail();
           size = 2;
           opcode = 240;
-          form = "input";
+          form = op === "IN" ? "input" : "output";
+        } else if (op === "POP") {
+          if (args.length !== 1 || reg(args[0]) < 0) fail();
+          size = 1;
+          opcode = 113;
+          form = "pop";
         } else if (op === "NOP" || op === "RET") {
           if (args.length) fail();
           size = 1;
@@ -101,21 +147,27 @@ var require_core = __commonJS({
             size = 2;
             if (reg(args[1]) >= 0 || args.length === 3 && reg(args[2]) < 1) fail();
           }
-        } else if (jumps[op]) {
+        } else if (targetOpcodes[op]) {
           if (args.length < 1 || args.length > 2 || reg(args[0]) >= 0 || args.length === 2 && reg(args[1]) < 1) fail();
-          form = "jump";
-          opcode = jumps[op];
+          form = "target";
+          opcode = targetOpcodes[op];
           size = 2;
         } else throw new CaslError2(line, `\u672A\u5BFE\u5FDC\u306E\u547D\u4EE4\u3067\u3059: ${op}\uFF08\u5BFE\u5FDC\u7BC4\u56F2\u306FREADME\u3092\u53C2\u7167\uFF09`);
-        if (form === "address" || form === "jump") {
-          const operand = args[form === "jump" ? 0 : 1];
+        if (form === "address" || form === "target") {
+          const operand = args[form === "target" ? 0 : 1];
           if (operand.startsWith("=")) {
             const value = numeric(operand.slice(1), line);
             if (!literals.has(operand)) literals.set(operand, { value, line });
           }
         }
         if (address + size > 65280) throw new CaslError2(line, "\u30D7\u30ED\u30B0\u30E9\u30E0\u9818\u57DF\u304C\u4E0A\u9650\u3092\u8D85\u3048\u307E\u3057\u305F\u3002");
-        if (label && (form === "data" || form === "reserve")) variables.push({ name: label, address, size });
+        if (data) memory.set(data, address);
+        if (form === "data" || form === "reserve") {
+          if (label) variables.push({ name: label, address, size });
+          const last = dataRanges.at(-1);
+          if (size && last?.[1] === address) last[1] += size;
+          else if (size) dataRanges.push([address, address + size]);
+        }
         nodes.push({ line, source: original, op, args, address, size, form, opcode });
         address += size;
       }
@@ -133,29 +185,20 @@ var require_core = __commonJS({
       };
       for (const node of nodes) {
         const { args, line, address: at, form, opcode } = node;
-        if (form === "data") args.forEach((a, i) => {
-          memory[at + i] = numeric(a, line);
-        });
-        else if (form !== "reserve") {
+        if (form !== "data" && form !== "reserve") {
           let first = opcode << 8;
           if (form === "register") first |= reg(args[0]) << 4 | reg(args[1]);
           if (form === "address") first |= reg(args[0]) << 4 | (args[2] ? reg(args[2]) : 0);
-          if (form === "jump") first |= args[1] ? reg(args[1]) : 0;
+          if (form === "target") first |= args[1] ? reg(args[1]) : 0;
+          if (form === "pop") first |= reg(args[0]) << 4;
           memory[at] = first;
-          if (form === "input") {
+          if (form === "input" || form === "output") {
             node.buffer = resolve(args[0], line);
             node.lengthAddress = resolve(args[1], line);
-            const allocated = nodes.filter((n) => n.form === "data" || n.form === "reserve");
-            const contains = (address2, size) => {
-              for (let offset = 0; offset < size; offset++) {
-                if (!allocated.some((n) => address2 + offset >= n.address && address2 + offset < n.address + n.size)) return false;
-              }
-              return true;
-            };
-            if (!contains(node.buffer, 256) || !contains(node.lengthAddress, 1)) throw new CaslError2(line, "IN\u306B\u306F256\u8A9E\u306E\u5165\u529B\u9818\u57DF\u30681\u8A9E\u306E\u6587\u5B57\u6570\u9818\u57DF\u304C\u5FC5\u8981\u3067\u3059\u3002");
-            if (node.lengthAddress >= node.buffer && node.lengthAddress < node.buffer + 256) throw new CaslError2(line, "IN\u306E\u5165\u529B\u9818\u57DF\u3068\u6587\u5B57\u6570\u9818\u57DF\u304C\u91CD\u8907\u3057\u3066\u3044\u307E\u3059\u3002");
-            memory[at + 1] = 65520;
-          } else if (node.size === 2) memory[at + 1] = resolve(args[form === "jump" ? 0 : 1], line);
+            const error = form === "input" ? inputAreaError(dataRanges, node.buffer, node.lengthAddress) : !containsData(dataRanges, node.lengthAddress, 1) && "OUT\u306B\u306F1\u8A9E\u306E\u6587\u5B57\u6570\u9818\u57DF\u304C\u5FC5\u8981\u3067\u3059\u3002";
+            if (error) throw new CaslError2(line, error);
+            memory[at + 1] = form === "input" ? 65520 : 65521;
+          } else if (node.size === 2) memory[at + 1] = resolve(args[form === "target" ? 0 : 1], line);
           node.words = Array.from(memory.slice(at, at + node.size));
           instructions.set(at, node);
         }
@@ -163,25 +206,36 @@ var require_core = __commonJS({
       if (startTarget && !symbols.has(startTarget)) throw new CaslError2(startLine, `START\u306E\u958B\u59CB\u30E9\u30D9\u30EB\u304C\u672A\u5B9A\u7FA9\u3067\u3059: ${startTarget}`);
       const entry = startTarget ? symbols.get(startTarget) : BASE;
       if (!instructions.has(entry)) throw new CaslError2(startLine, "\u958B\u59CB\u4F4D\u7F6E\u306B\u5B9F\u884C\u547D\u4EE4\u304C\u3042\u308A\u307E\u305B\u3093\u3002");
-      return { memory, instructions, symbols, entry, variables };
+      return { memory, instructions, symbols, entry, variables, dataRanges, end: address };
+    }
+    function encodeChar(char) {
+      const n = char.codePointAt(0);
+      if (n >= 32 && n <= 126) return n;
+      if (n >= 65377 && n <= 65439) return n - 65377 + 161;
+      if (char === "\xA5") return 92;
+      if (char === "\u203E") return 126;
+      throw new Error("\u534A\u89D2\u82F1\u6570\u5B57\u30FB\u8A18\u53F7\u30FB\u534A\u89D2\u30AB\u30CA\u3092\u5165\u529B\u3057\u3066\u304F\u3060\u3055\u3044\u3002");
     }
     function encodeInput2(text) {
       if (typeof text !== "string") throw new Error("\u6587\u5B57\u5217\u3092\u5165\u529B\u3057\u3066\u304F\u3060\u3055\u3044\u3002");
-      return Array.from(text).slice(0, 256).map((char) => {
-        const n = char.codePointAt(0);
-        if (n >= 32 && n <= 126) return n;
-        if (n >= 65377 && n <= 65439) return n - 65377 + 161;
-        if (char === "\xA5") return 92;
-        if (char === "\u203E") return 126;
-        throw new Error("\u534A\u89D2\u82F1\u6570\u5B57\u30FB\u8A18\u53F7\u30FB\u534A\u89D2\u30AB\u30CA\u3092\u5165\u529B\u3057\u3066\u304F\u3060\u3055\u3044\u3002");
-      });
+      return Array.from(text).slice(0, inputSize).map(encodeChar);
+    }
+    function decodeChar(word2) {
+      const byte = word2 & 255;
+      if (byte === 92) return "\xA5";
+      if (byte === 126) return "\u203E";
+      if (byte <= 127) return String.fromCharCode(byte);
+      if (byte >= 161 && byte <= 223) return String.fromCharCode(byte - 161 + 65377);
+      return "\uFFFD";
     }
     function* execution(program, maxSteps = 2e3) {
       if (!Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > 2e3) throw new Error("\u5B9F\u884C\u4E0A\u9650\u306F1\uFF5E2000\u3067\u3059\u3002");
       const memory = program.memory.slice(), gr = Array(8).fill(0), flags = { OF: 0, SF: 0, ZF: 0 };
+      const rows = [], output = [];
+      let sp = 0, outputSize = 0;
       let pr = program.entry, status = "limit", message = `${maxSteps}\u547D\u4EE4\u306E\u4E0A\u9650\u306B\u9054\u3057\u305F\u305F\u3081\u505C\u6B62\u3057\u307E\u3057\u305F\u3002`, errorLine;
-      const snapshot = () => ({ gr: [...gr], flags: { ...flags }, sp: 0 });
-      const initial = snapshot(), rows = [];
+      const snapshot = () => ({ gr: [...gr], flags: { ...flags }, sp });
+      const initial = snapshot();
       for (let step = 1; step <= maxSteps; step++) {
         const node = program.instructions.get(pr);
         if (!node || node.words.some((v, i) => memory[pr + i] !== v)) {
@@ -189,15 +243,6 @@ var require_core = __commonJS({
           message = `#${pr.toString(16).toUpperCase()} \u306F\u5B9F\u884C\u547D\u4EE4\u306E\u5148\u982D\u3067\u306F\u306A\u3044\u304B\u3001\u547D\u4EE4\u304C\u66F8\u304D\u63DB\u3048\u3089\u308C\u3066\u3044\u307E\u3059\u3002`;
           errorLine = node?.line;
           break;
-        }
-        let input;
-        if (node.form === "input") {
-          input = yield { line: node.line, buffer: node.args[0], length: node.args[1] };
-          if (input === void 0) {
-            status = "cancelled";
-            message = "\u5165\u529B\u3092\u4E2D\u6B62\u3057\u307E\u3057\u305F\u3002";
-            break;
-          }
         }
         const instructionAddress = pr, code = memory[pr] >>> 8, r = memory[pr] >>> 4 & 15, x = memory[pr] & 15;
         const reads = /* @__PURE__ */ new Set(), writes = /* @__PURE__ */ new Set(), flagWrites = /* @__PURE__ */ new Set(), flagReads = /* @__PURE__ */ new Set(), accesses = [];
@@ -213,6 +258,15 @@ var require_core = __commonJS({
           accesses.push({ kind: "read", address: at, value: memory[at] });
           return memory[at];
         };
+        const writeMemory = (at, value) => {
+          accesses.push({ kind: "write", address: at, before: memory[at], value });
+          memory[at] = value;
+        };
+        const fail = (reason) => {
+          status = "error";
+          message = `${node.line}\u884C: ${reason}`;
+          errorLine = node.line;
+        };
         const setFlags = (result, overflow) => {
           flags.OF = Number(overflow);
           flags.SF = Number((word(result) & 32768) !== 0);
@@ -221,29 +275,77 @@ var require_core = __commonJS({
         };
         const address = node.size === 2 ? word(memory[pr + 1] + (x ? readReg(x) : 0)) : 0;
         pr = word(pr + node.size);
-        if (node.form === "input") {
-          let codes;
-          try {
-            codes = input === null ? [] : encodeInput2(input);
-          } catch (error) {
-            throw new CaslError2(node.line, error.message);
+        if (code === 240) {
+          const service = node.form === "input" ? 1 : node.form === "output" ? 2 : address;
+          if (service !== 1 && service !== 2) {
+            fail(`\u672A\u5BFE\u5FDC\u306ESVC\u756A\u53F7\u3067\u3059: #${service.toString(16).toUpperCase().padStart(4, "0")}\uFF081: \u5165\u529B\u30012: \u51FA\u529B\uFF09`);
+            break;
           }
-          const store = (at, value) => {
-            accesses.push({ kind: "write", address: at, before: memory[at], value });
-            memory[at] = value;
-          };
-          codes.forEach((value, i) => store(node.buffer + i, value));
-          store(node.lengthAddress, input === null ? 65535 : codes.length);
+          const buffer = node.buffer ?? readReg(1), lengthAddress = node.lengthAddress ?? readReg(2);
+          if (service === 1) {
+            const error = inputAreaError(program.dataRanges, buffer, lengthAddress);
+            if (error) {
+              fail(error);
+              break;
+            }
+            const input = yield node.form === "input" ? { line: node.line, buffer: node.args[0], length: node.args[1] } : { line: node.line, buffer: "GR1", length: "GR2", service };
+            if (input === void 0) {
+              status = "cancelled";
+              message = "\u5165\u529B\u3092\u4E2D\u6B62\u3057\u307E\u3057\u305F\u3002";
+              break;
+            }
+            let codes;
+            try {
+              codes = input === null ? [] : encodeInput2(input);
+            } catch (error2) {
+              throw new CaslError2(node.line, error2.message);
+            }
+            codes.forEach((value, i) => writeMemory(buffer + i, value));
+            writeMemory(lengthAddress, input === null ? 65535 : codes.length);
+          } else {
+            if (!containsData(program.dataRanges, lengthAddress, 1)) {
+              fail("OUT\u306B\u306F1\u8A9E\u306E\u6587\u5B57\u6570\u9818\u57DF\u304C\u5FC5\u8981\u3067\u3059\u3002");
+              break;
+            }
+            const size = readMemory(lengthAddress);
+            if (size && !containsData(program.dataRanges, buffer, size)) {
+              fail("\u51FA\u529B\u6587\u5B57\u6570\u304COUT\u306E\u30C7\u30FC\u30BF\u9818\u57DF\u3092\u8D85\u3048\u3066\u3044\u307E\u3059\u3002");
+              break;
+            }
+            if (outputSize + size > maxOutputSize) {
+              fail(`\u51FA\u529B\u304C\u5408\u8A08${maxOutputSize}\u6587\u5B57\u306E\u4E0A\u9650\u3092\u8D85\u3048\u307E\u3057\u305F\u3002`);
+              break;
+            }
+            let record = "";
+            for (let i = 0; i < size; i++) record += decodeChar(readMemory(buffer + i));
+            output.push(record);
+            outputSize += size;
+          }
           flags.OF = flags.SF = flags.ZF = 0;
           ["OF", "SF", "ZF"].forEach((f) => flagWrites.add(f));
         } else if (code === 18) writeReg(r, address);
-        else if (code === 17) {
-          const value = readReg(r);
-          accesses.push({ kind: "write", address, before: memory[address], value });
-          memory[address] = value;
-        } else if (code === 129) {
+        else if (code === 17) writeMemory(address, readReg(r));
+        else if (code === 112 || code === 128) {
+          const nextSp = word(sp - 1);
+          if (nextSp < program.end) {
+            fail("\u30B9\u30BF\u30C3\u30AF\u9818\u57DF\u306E\u4E0A\u9650\u3092\u8D85\u3048\u307E\u3057\u305F\u3002");
+            break;
+          }
+          sp = nextSp;
+          writeMemory(sp, code === 112 ? address : pr);
+          if (code === 128) pr = address;
+        } else if (code === 129 && sp === 0) {
           status = "completed";
           message = "\u6B63\u5E38\u7D42\u4E86\u3057\u307E\u3057\u305F\u3002";
+        } else if (code === 113 || code === 129) {
+          if (sp === 0) {
+            fail("\u30B9\u30BF\u30C3\u30AF\u304C\u7A7A\u3067\u3059\u3002");
+            break;
+          }
+          const value = readMemory(sp);
+          sp = word(sp + 1);
+          if (code === 113) writeReg(r, value);
+          else pr = value;
         } else if (code >= 97 && code <= 102) {
           const used = { 97: ["SF"], 98: ["ZF"], 99: ["ZF"], 100: [], 101: ["SF", "ZF"], 102: ["OF"] }[code];
           used.forEach((f) => flagReads.add(f));
@@ -301,7 +403,7 @@ var require_core = __commonJS({
         initial: Array.from(program.memory.slice(variable.address, variable.address + variable.size)),
         final: Array.from(memory.slice(variable.address, variable.address + variable.size))
       }));
-      return { initial, rows, status, message, errorLine, memory, symbols: program.symbols, variables };
+      return { initial, rows, status, message, errorLine, memory, symbols: program.symbols, variables, output };
     }
     function execute(program, maxSteps = 2e3, inputs = []) {
       const machine = execution(program, maxSteps);
@@ -374,6 +476,9 @@ select { font: inherit; padding: 3px; background: var(--vscode-dropdown-backgrou
 .trace { flex: 1; min-height: 140px; }
 .variables { flex-shrink: 0; max-height: 30vh; overflow: auto; }
 .variables > summary { cursor: pointer; font-size: 12px; font-weight: 600; margin-bottom: 5px; }
+.output { flex-shrink: 0; max-height: 20vh; overflow: auto; border: 1px solid var(--vscode-panel-border, #526174); padding: 6px 10px; }
+.output ol { margin: 4px 0; padding-left: 2em; }
+.output code { white-space: pre-wrap; overflow-wrap: anywhere; }
 table { border-collapse: separate; border-spacing: 0; width: 100%; font-family: var(--vscode-editor-font-family, Consolas, monospace); font-size: 12px; }
 th, td { border-right: 1px solid var(--vscode-panel-border, #526174); border-bottom: 1px solid var(--vscode-panel-border, #526174); padding: 5px 7px; white-space: nowrap; text-align: right; }
 thead th { position: sticky; top: 0; background: var(--vscode-editorWidget-background, #263344); z-index: 1; }
@@ -424,6 +529,7 @@ thead .step, thead .source { z-index: 3; background: var(--vscode-editorWidget-b
 <button id="refresh" title="\u5143\u306E\u30D5\u30A1\u30A4\u30EB\u306E\u6700\u65B0\u5185\u5BB9\u3067\u518D\u5B9F\u884C">\u66F4\u65B0</button><span id="refresh-status" role="status"></span>
 <select id="base" aria-label="\u5024\u306E\u8868\u793A\u5F62\u5F0F"><option value="signed" selected>10\u9032\u6570</option><option value="hex">16\u9032\u6570</option><option value="binary">2\u9032\u6570</option></select>
 <span class="legend write" title="\u66F4\u65B0\u30FB\u53C2\u7167\u306E\u4E21\u65B9\u306E\u5834\u5408\u3082\u3053\u306E\u8868\u793A">\u66F8\u8FBC</span><span class="legend read">\u53C2\u7167</span></header>
+${result.output?.length ? `<details class="output" open><summary>\u51FA\u529B\uFF08${result.output.length}\u4EF6\uFF09</summary><ol>${result.output.map((record) => `<li><code>${escape(record)}</code></li>`).join("")}</ol></details>` : ""}
 <section class="watchbar" aria-label="\u8868\u793A\u3059\u308B\u5909\u6570"><div id="watch-list"></div><span id="watch-count"></span>
 <details id="watch-controls"><summary>\u5909\u6570\u30FB\u914D\u5217\u3092\u8FFD\u52A0</summary><div class="toolbar"><label>\u5909\u6570 <select id="variable">${result.variables.map((v, i) => `<option value="${i}">${escape(v.name)}${v.size > 1 ? " [" + v.size + "\u8A9E]" : ""}</option>`).join("")}</select></label><label>\u6DFB\u5B57 <input id="offset" type="number" min="0" value="0" step="1"></label><button id="add-watch">\u5217\u306B\u8FFD\u52A0</button></div></details><span id="empty-watch" hidden>\u300C\u5909\u6570\u30FB\u914D\u5217\u3092\u8FFD\u52A0\u300D\u304B\u3089\u9078\u629E</span></section>
 <nav class="toolbar" aria-label="\u5C65\u6B74\u306E\u64CD\u4F5C"><label>\u8868\u793A <select id="filter"><option value="all">\u3059\u3079\u3066\u306E\u547D\u4EE4</option><option value="write">\u5909\u6570\u3092\u66F4\u65B0\u3057\u305F\u547D\u4EE4</option><option value="access">\u5909\u6570\u3092\u53C2\u7167\u30FB\u66F4\u65B0\u3057\u305F\u547D\u4EE4</option></select></label><button id="previous" aria-label="\u524D\u306E\u30B9\u30C6\u30C3\u30D7">\u2190</button><button id="next" aria-label="\u6B21\u306E\u30B9\u30C6\u30C3\u30D7">\u2192</button><button id="previous-change">\u524D\u306E\u66F4\u65B0</button><button id="next-change">\u6B21\u306E\u66F4\u65B0</button><span id="row-count"></span><label><input id="registers" type="checkbox" checked>GR</label><label><input id="machine" type="checkbox">PR\u30FBFR\u30FBSP\u30FB\u30E1\u30E2\u30EA\u30FC</label></nav>
@@ -518,7 +624,8 @@ function readInput(request, token) {
     }
     const box = vscode.window.createInputBox();
     const eof = { iconPath: new vscode.ThemeIcon("debug-stop"), tooltip: "EOF\uFF08\u5165\u529B\u7D42\u4E86\uFF09" };
-    box.title = `IN ${request.buffer},${request.length}\uFF08${request.line}\u884C\uFF09`;
+    const instruction = request.service ? `SVC ${request.service}` : `IN ${request.buffer},${request.length}`;
+    box.title = `${instruction}\uFF08${request.line}\u884C\uFF09`;
     box.prompt = "\u6587\u5B57\u5217\u3092\u5165\u529B \xB7 \u6700\u5927256\u6587\u5B57 \xB7 Esc\u3067\u4E2D\u6B62";
     box.ignoreFocusOut = true;
     box.buttons = [eof];

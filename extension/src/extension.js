@@ -10,7 +10,8 @@ function readInput(request, token) {
     if (token?.isCancellationRequested) { resolve(undefined); return; }
     const box = vscode.window.createInputBox();
     const eof = { iconPath: new vscode.ThemeIcon('debug-stop'), tooltip: 'EOF（入力終了）' };
-    box.title = `IN ${request.buffer},${request.length}（${request.line}行）`;
+    const instruction = request.service ? `SVC ${request.service}` : `IN ${request.buffer},${request.length}`;
+    box.title = `${instruction}（${request.line}行）`;
     box.prompt = '文字列を入力 · 最大256文字 · Escで中止';
     box.ignoreFocusOut = true;
     box.buttons = [eof];

@@ -1,0 +1,21 @@
+DEMO    START
+        IN      BUF,LEN
+        LD      GR0,LEN
+        JMI     DONE
+        PUSH    42
+        POP     GR0
+        CALL    PRINT
+DONE    RET
+PRINT   RPUSH
+        NOP
+        OUT     HEAD,HEADLEN
+        LAD     GR1,BUF
+        LAD     GR2,LEN
+        SVC     2
+        RPOP
+        RET
+HEAD    DC      'Input:'
+HEADLEN DC      6
+BUF     DS      256
+LEN     DS      1
+        END
