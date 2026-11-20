@@ -7,6 +7,21 @@ const path = require('node:path');
 
 function setup(web = false) {
   const commands = new Map(), panels = [], errors = [], prompts = [], disposable = () => ({ dispose() {} });
+  let progress;
+  class CancellationTokenSource {
+    constructor() {
+      this.listeners = new Set();
+      this.token = { isCancellationRequested: false, onCancellationRequested: listener => {
+        this.listeners.add(listener);
+        return { dispose: () => this.listeners.delete(listener) };
+      } };
+    }
+    cancel() {
+      this.token.isCancellationRequested = true;
+      this.listeners.forEach(listener => listener());
+    }
+    dispose() { this.listeners.clear(); }
+  }
   const document = { uri: 'file:///original.cas', languageId: 'casl2', version: 1, lineCount: 4, isClosed: false,
     source: 'TEST START\n LAD GR1,3\n RET\n END', getText() { return this.source; }, lineAt() { return { range: {} }; } };
   const vscode = {
@@ -15,6 +30,11 @@ function setup(web = false) {
     workspace: { onDidChangeTextDocument: disposable, onDidCloseTextDocument: disposable,
       async openTextDocument(uri) { assert.equal(uri, document.uri); if (document.missing) throw new Error('File missing'); return document; }, asRelativePath: uri => uri },
     window: { activeTextEditor: { document }, showInformationMessage() {}, showErrorMessage(message) { errors.push(message); },
+      withProgress(options, task) {
+        const source = new CancellationTokenSource();
+        progress = { options, cancel: () => source.cancel() };
+        return task({}, source.token);
+      },
       createInputBox() {
         let accept;
         return { ...disposable(), value: '<b>ｶ</b>', onDidAccept(handler) { accept = handler; return disposable(); },
@@ -25,16 +45,12 @@ function setup(web = false) {
         const panel = { ...disposable(), messages: [], webview: { html: '', onDidReceiveMessage(handler) { panel.receive = handler; return disposable(); }, postMessage(message) { panel.messages.push(message); } }, onDidDispose(handler) { panel.close = handler; } };
         panels.push(panel); return panel;
       } },
-    CancellationTokenSource: class {
-      constructor() { this.token = { isCancellationRequested: false, onCancellationRequested: disposable }; }
-      cancel() { this.token.isCancellationRequested = true; }
-      dispose() {}
-    },
+    CancellationTokenSource, ProgressLocation: { Notification: 15 },
     ViewColumn: { Beside: 2 }, Diagnostic: class {}, DiagnosticSeverity: { Error: 0 }, ThemeIcon: class {},
   };
   const module = { exports: {} };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, web ? '../dist/web/extension.js' : '../src/extension.js'), 'utf8'), {
-    module, exports: module.exports, crypto: require('node:crypto').webcrypto,
+    module, exports: module.exports, crypto: require('node:crypto').webcrypto, setTimeout,
     require: name => {
       if (name === 'vscode') return vscode;
       assert.equal(web, false, 'Web bundle must not require Node.js or other modules');
@@ -42,7 +58,7 @@ function setup(web = false) {
     },
   });
   module.exports.activate({ subscriptions: [] });
-  return { commands, panels, document, vscode, errors, prompts };
+  return { commands, panels, document, vscode, errors, prompts, get progress() { return progress; } };
 }
 
 test('更新は元のURIの未保存内容を読み、同じパネルを置き換える', async () => {
@@ -79,6 +95,34 @@ test('更新失敗では前回結果を保ち、エラーを示して再試行�
 });
 
 for (const web of [false, true]) {
+  test(`デスクトップ/WebでEX9が3006命令で正常終了する (${web})`, async () => {
+    const app = setup(web);
+    app.document.source = [
+      'EX9     START', '        CALL    DELAY', '        RET',
+      'DELAY   PUSH    0,GR1', '        LAD     GR1,1000',
+      'LOOP    SUBA    GR1,=1', '        NOP', '        JNZ     LOOP',
+      '        POP     GR1', '        RET', '        END',
+    ].join('\n');
+    await app.commands.get('casl2.runTrace')();
+    assert.deepEqual(app.errors, []);
+    const html = app.panels[0].webview.html;
+    assert.match(html, /正常終了 · 3006命令/);
+    assert.match(html, /data-step="3006"/);
+  });
+
+  test(`デスクトップ/Webで無限ループを通知から中止できる (${web})`, async () => {
+    const app = setup(web);
+    app.document.source = 'TEST START\nLOOP JUMP LOOP\n END';
+    const run = app.commands.get('casl2.runTrace')();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(app.progress.options.location, app.vscode.ProgressLocation.Notification);
+    assert.equal(app.progress.options.cancellable, true);
+    app.progress.cancel();
+    await run;
+    assert.deepEqual(app.errors, []);
+    assert.match(app.panels[0].webview.html, /実行を中止しました。 · 1000命令/);
+  });
+
   test(`デスクトップ/Webでスタック、入力、サブルーチン、出力を実行する (${web})`, async () => {
     const app = setup(web);
     app.document.source = fs.readFileSync(path.join(__dirname, '../examples/stack-io.cas'), 'utf8');

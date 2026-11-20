@@ -68,7 +68,20 @@ function activate(context) {
       if (state.disposed) return;
       version = document.version;
       diagnostics.delete(uri);
-      const result = await executeWithInput(assemble(document.getText()), request => readInput(request, state.cancellation.token));
+      const program = assemble(document.getText());
+      const executionToken = state.cancellation.token;
+      const result = await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: 'CASL II を実行中', cancellable: true },
+        async (_, token) => {
+          const listener = token.onCancellationRequested(() => state.cancellation.cancel());
+          try {
+            if (token.isCancellationRequested) state.cancellation.cancel();
+            return await executeWithInput(program, request => readInput(request, executionToken), Infinity, executionToken);
+          } finally {
+            listener.dispose();
+          }
+        }
+      );
       if (state.disposed) return;
       if (!state.panel) {
         const panel = vscode.window.createWebviewPanel('casl2.trace', 'CASL II 実行履歴', vscode.ViewColumn.Beside, { enableScripts: true, localResourceRoots: [] });

@@ -9,6 +9,16 @@ const { renderTrace } = require('../src/render');
 const run = body => execute(assemble(`TEST START\n${body}\n END`));
 const sample = name => execute(assemble(fs.readFileSync(path.join(__dirname, '../examples', name), 'utf8')));
 
+test('履歴の記録を終えた後も実行し、終了時点のメモリーと実行数を返す', () => {
+  const result = run(' LAD GR1,2500\nLOOP SUBA GR1,=1\n JNZ LOOP\n LAD GR2,42\n ST GR2,ANS\n RET\nANS DS 1');
+  assert.equal(result.status, 'completed');
+  assert.equal(result.stepCount, 5004);
+  assert.equal(result.rows.length, 5000);
+  assert.equal(result.rows.at(-1).step, 5000);
+  assert.equal(result.memory[result.symbols.get('ANS')], 42);
+  assert.match(renderTrace(result, 'test.cas'), /履歴は先頭5000命令を表示/);
+});
+
 test('ループの実行順、加算、メモリー書込みと履歴の独立性', () => {
   const result = sample('sum.cas');
   assert.equal(result.status, 'completed');

@@ -92,7 +92,8 @@ summary { cursor: pointer; font-size: 12px; }
 thead .step, thead .source { z-index: 3; background: var(--vscode-editorWidget-background, #263344); }
 @media(max-width: 600px) { .source { max-width: 180px; } .toolbar { gap: 6px; } }
 </style></head><body>
-<header class="toolbar"><span class="file" title="${escape(name)}">${escape(name)}</span><span class="status ${result.status}" role="status">${escape(status)} · ${result.rows.length}命令</span>
+<header class="toolbar"><span class="file" title="${escape(name)}">${escape(name)}</span><span class="status ${result.status}" role="status">${escape(status)} · ${result.stepCount}命令</span>
+${result.stepCount > result.rows.length ? `<span>履歴は先頭${result.rows.length}命令を表示</span>` : ''}
 <button id="refresh" title="元のファイルの最新内容で再実行">更新</button><span id="refresh-status" role="status"></span>
 <select id="base" aria-label="値の表示形式"><option value="signed" selected>10進数</option><option value="hex">16進数</option><option value="binary">2進数</option></select>
 <span class="legend write" title="更新・参照の両方の場合もこの表示">書込</span><span class="legend read">参照</span></header>

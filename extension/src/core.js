@@ -7,6 +7,10 @@ const shifts = { SLA: 0x50, SRA: 0x51, SLL: 0x52, SRL: 0x53 };
 const targetOpcodes = { ...jumps, PUSH: 0x70, CALL: 0x80, SVC: 0xf0 };
 const inputSize = 256;
 const maxOutputSize = 65536;
+const maxOutputRecords = 65536;
+const maxTraceRows = 5000;
+const stepsPerBatch = 1000;
+const checkpoint = Symbol('execution checkpoint');
 const signed = n => n & 0x8000 ? n - 0x10000 : n;
 const word = n => n & 0xffff;
 const reg = text => /^GR[0-7]$/.test(text || '') ? Number(text[2]) : -1;
@@ -192,15 +196,20 @@ function decodeChar(word) {
   return '\ufffd';
 }
 
-function* execution(program, maxSteps = 2000) {
-  if (!Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > 2000) throw new Error('実行上限は1～2000です。');
+function* execution(program, maxSteps, token) {
+  if (maxSteps !== Infinity && (!Number.isSafeInteger(maxSteps) || maxSteps < 1)) {
+    throw new Error('実行上限には正の安全な整数かInfinityを指定してください。');
+  }
   const memory = program.memory.slice(), gr = Array(8).fill(0), flags = { OF: 0, SF: 0, ZF: 0 };
   const rows = [], output = [];
-  let sp = 0, outputSize = 0;
+  let sp = 0, outputSize = 0, stepCount = 0;
   let pr = program.entry, status = 'limit', message = `${maxSteps}命令の上限に達したため停止しました。`, errorLine;
   const snapshot = () => ({ gr: [...gr], flags: { ...flags }, sp });
   const initial = snapshot();
   for (let step = 1; step <= maxSteps; step++) {
+    if (token?.isCancellationRequested) {
+      status = 'cancelled'; message = '実行を中止しました。'; break;
+    }
     const node = program.instructions.get(pr);
     if (!node || node.words.some((v, i) => memory[pr + i] !== v)) {
       status = 'error'; message = `#${pr.toString(16).toUpperCase()} は実行命令の先頭ではないか、命令が書き換えられています。`; errorLine = node?.line; break;
@@ -230,7 +239,11 @@ function* execution(program, maxSteps = 2000) {
         if (error) { fail(error); break; }
         const input = yield node.form === 'input' ? { line: node.line, buffer: node.args[0], length: node.args[1] } :
           { line: node.line, buffer: 'GR1', length: 'GR2', service };
-        if (input === undefined) { status = 'cancelled'; message = '入力を中止しました。'; break; }
+        if (token?.isCancellationRequested || input === undefined) {
+          status = 'cancelled';
+          message = token?.isCancellationRequested ? '実行を中止しました。' : '入力を中止しました。';
+          break;
+        }
         let codes;
         try { codes = input === null ? [] : encodeInput(input); }
         catch (error) { throw new CaslError(node.line, error.message); }
@@ -241,6 +254,7 @@ function* execution(program, maxSteps = 2000) {
         const size = readMemory(lengthAddress);
         if (size && !containsData(program.dataRanges, buffer, size)) { fail('出力文字数がOUTのデータ領域を超えています。'); break; }
         if (outputSize + size > maxOutputSize) { fail(`出力が合計${maxOutputSize}文字の上限を超えました。`); break; }
+        if (output.length >= maxOutputRecords) { fail(`出力が${maxOutputRecords}件の上限を超えました。`); break; }
         let record = '';
         for (let i = 0; i < size; i++) record += decodeChar(readMemory(buffer + i));
         output.push(record);
@@ -308,27 +322,40 @@ function* execution(program, maxSteps = 2000) {
         }
       }
     }
-    rows.push({ step, pr: instructionAddress, nextPr: pr, line: node.line, source: node.source, ...snapshot(), reads: [...reads], writes: [...writes], flagWrites: [...flagWrites], flagReads: [...flagReads], accesses });
+    stepCount = step;
+    if (step <= maxTraceRows) {
+      rows.push({ step, pr: instructionAddress, nextPr: pr, line: node.line, source: node.source, ...snapshot(), reads: [...reads], writes: [...writes], flagWrites: [...flagWrites], flagReads: [...flagReads], accesses });
+    }
     if (status === 'completed') break;
+    if (step % stepsPerBatch === 0 && step < maxSteps) yield checkpoint;
   }
   const variables = program.variables.map(variable => ({ ...variable,
     initial: Array.from(program.memory.slice(variable.address, variable.address + variable.size)),
     final: Array.from(memory.slice(variable.address, variable.address + variable.size)),
   }));
-  return { initial, rows, status, message, errorLine, memory, symbols: program.symbols, variables, output };
+  return { initial, rows, stepCount, status, message, errorLine, memory, symbols: program.symbols, variables, output };
 }
 
-function execute(program, maxSteps = 2000, inputs = []) {
+function execute(program, maxSteps = Infinity, inputs = []) {
   const machine = execution(program, maxSteps);
   let state = machine.next(), index = 0;
-  while (!state.done) state = machine.next(inputs[index++]);
+  while (!state.done) {
+    state = state.value === checkpoint ? machine.next() : machine.next(inputs[index++]);
+  }
   return state.value;
 }
 
-async function executeWithInput(program, readInput, maxSteps = 2000) {
-  const machine = execution(program, maxSteps);
+async function executeWithInput(program, readInput, maxSteps = Infinity, token) {
+  const machine = execution(program, maxSteps, token);
   let state = machine.next();
-  while (!state.done) state = machine.next(await readInput(state.value));
+  while (!state.done) {
+    if (state.value === checkpoint) {
+      await new Promise(resolve => setTimeout(resolve, 0));
+      state = machine.next();
+    } else {
+      state = machine.next(await readInput(state.value));
+    }
+  }
   return state.value;
 }
 

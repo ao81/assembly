@@ -19,6 +19,10 @@ var require_core = __commonJS({
     var targetOpcodes = { ...jumps, PUSH: 112, CALL: 128, SVC: 240 };
     var inputSize = 256;
     var maxOutputSize = 65536;
+    var maxOutputRecords = 65536;
+    var maxTraceRows = 5e3;
+    var stepsPerBatch = 1e3;
+    var checkpoint = /* @__PURE__ */ Symbol("execution checkpoint");
     var signed = (n) => n & 32768 ? n - 65536 : n;
     var word = (n) => n & 65535;
     var reg = (text) => /^GR[0-7]$/.test(text || "") ? Number(text[2]) : -1;
@@ -228,15 +232,22 @@ var require_core = __commonJS({
       if (byte >= 161 && byte <= 223) return String.fromCharCode(byte - 161 + 65377);
       return "\uFFFD";
     }
-    function* execution(program, maxSteps = 2e3) {
-      if (!Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > 2e3) throw new Error("\u5B9F\u884C\u4E0A\u9650\u306F1\uFF5E2000\u3067\u3059\u3002");
+    function* execution(program, maxSteps, token) {
+      if (maxSteps !== Infinity && (!Number.isSafeInteger(maxSteps) || maxSteps < 1)) {
+        throw new Error("\u5B9F\u884C\u4E0A\u9650\u306B\u306F\u6B63\u306E\u5B89\u5168\u306A\u6574\u6570\u304BInfinity\u3092\u6307\u5B9A\u3057\u3066\u304F\u3060\u3055\u3044\u3002");
+      }
       const memory = program.memory.slice(), gr = Array(8).fill(0), flags = { OF: 0, SF: 0, ZF: 0 };
       const rows = [], output = [];
-      let sp = 0, outputSize = 0;
+      let sp = 0, outputSize = 0, stepCount = 0;
       let pr = program.entry, status = "limit", message = `${maxSteps}\u547D\u4EE4\u306E\u4E0A\u9650\u306B\u9054\u3057\u305F\u305F\u3081\u505C\u6B62\u3057\u307E\u3057\u305F\u3002`, errorLine;
       const snapshot = () => ({ gr: [...gr], flags: { ...flags }, sp });
       const initial = snapshot();
       for (let step = 1; step <= maxSteps; step++) {
+        if (token?.isCancellationRequested) {
+          status = "cancelled";
+          message = "\u5B9F\u884C\u3092\u4E2D\u6B62\u3057\u307E\u3057\u305F\u3002";
+          break;
+        }
         const node = program.instructions.get(pr);
         if (!node || node.words.some((v, i) => memory[pr + i] !== v)) {
           status = "error";
@@ -289,9 +300,9 @@ var require_core = __commonJS({
               break;
             }
             const input = yield node.form === "input" ? { line: node.line, buffer: node.args[0], length: node.args[1] } : { line: node.line, buffer: "GR1", length: "GR2", service };
-            if (input === void 0) {
+            if (token?.isCancellationRequested || input === void 0) {
               status = "cancelled";
-              message = "\u5165\u529B\u3092\u4E2D\u6B62\u3057\u307E\u3057\u305F\u3002";
+              message = token?.isCancellationRequested ? "\u5B9F\u884C\u3092\u4E2D\u6B62\u3057\u307E\u3057\u305F\u3002" : "\u5165\u529B\u3092\u4E2D\u6B62\u3057\u307E\u3057\u305F\u3002";
               break;
             }
             let codes;
@@ -314,6 +325,10 @@ var require_core = __commonJS({
             }
             if (outputSize + size > maxOutputSize) {
               fail(`\u51FA\u529B\u304C\u5408\u8A08${maxOutputSize}\u6587\u5B57\u306E\u4E0A\u9650\u3092\u8D85\u3048\u307E\u3057\u305F\u3002`);
+              break;
+            }
+            if (output.length >= maxOutputRecords) {
+              fail(`\u51FA\u529B\u304C${maxOutputRecords}\u4EF6\u306E\u4E0A\u9650\u3092\u8D85\u3048\u307E\u3057\u305F\u3002`);
               break;
             }
             let record = "";
@@ -395,26 +410,39 @@ var require_core = __commonJS({
             }
           }
         }
-        rows.push({ step, pr: instructionAddress, nextPr: pr, line: node.line, source: node.source, ...snapshot(), reads: [...reads], writes: [...writes], flagWrites: [...flagWrites], flagReads: [...flagReads], accesses });
+        stepCount = step;
+        if (step <= maxTraceRows) {
+          rows.push({ step, pr: instructionAddress, nextPr: pr, line: node.line, source: node.source, ...snapshot(), reads: [...reads], writes: [...writes], flagWrites: [...flagWrites], flagReads: [...flagReads], accesses });
+        }
         if (status === "completed") break;
+        if (step % stepsPerBatch === 0 && step < maxSteps) yield checkpoint;
       }
       const variables = program.variables.map((variable) => ({
         ...variable,
         initial: Array.from(program.memory.slice(variable.address, variable.address + variable.size)),
         final: Array.from(memory.slice(variable.address, variable.address + variable.size))
       }));
-      return { initial, rows, status, message, errorLine, memory, symbols: program.symbols, variables, output };
+      return { initial, rows, stepCount, status, message, errorLine, memory, symbols: program.symbols, variables, output };
     }
-    function execute(program, maxSteps = 2e3, inputs = []) {
+    function execute(program, maxSteps = Infinity, inputs = []) {
       const machine = execution(program, maxSteps);
       let state = machine.next(), index = 0;
-      while (!state.done) state = machine.next(inputs[index++]);
+      while (!state.done) {
+        state = state.value === checkpoint ? machine.next() : machine.next(inputs[index++]);
+      }
       return state.value;
     }
-    async function executeWithInput2(program, readInput2, maxSteps = 2e3) {
-      const machine = execution(program, maxSteps);
+    async function executeWithInput2(program, readInput2, maxSteps = Infinity, token) {
+      const machine = execution(program, maxSteps, token);
       let state = machine.next();
-      while (!state.done) state = machine.next(await readInput2(state.value));
+      while (!state.done) {
+        if (state.value === checkpoint) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          state = machine.next();
+        } else {
+          state = machine.next(await readInput2(state.value));
+        }
+      }
       return state.value;
     }
     module2.exports = { assemble: assemble2, execute, executeWithInput: executeWithInput2, encodeInput: encodeInput2, CaslError: CaslError2, signed };
@@ -525,7 +553,8 @@ summary { cursor: pointer; font-size: 12px; }
 thead .step, thead .source { z-index: 3; background: var(--vscode-editorWidget-background, #263344); }
 @media(max-width: 600px) { .source { max-width: 180px; } .toolbar { gap: 6px; } }
 </style></head><body>
-<header class="toolbar"><span class="file" title="${escape(name)}">${escape(name)}</span><span class="status ${result.status}" role="status">${escape(status)} \xB7 ${result.rows.length}\u547D\u4EE4</span>
+<header class="toolbar"><span class="file" title="${escape(name)}">${escape(name)}</span><span class="status ${result.status}" role="status">${escape(status)} \xB7 ${result.stepCount}\u547D\u4EE4</span>
+${result.stepCount > result.rows.length ? `<span>\u5C65\u6B74\u306F\u5148\u982D${result.rows.length}\u547D\u4EE4\u3092\u8868\u793A</span>` : ""}
 <button id="refresh" title="\u5143\u306E\u30D5\u30A1\u30A4\u30EB\u306E\u6700\u65B0\u5185\u5BB9\u3067\u518D\u5B9F\u884C">\u66F4\u65B0</button><span id="refresh-status" role="status"></span>
 <select id="base" aria-label="\u5024\u306E\u8868\u793A\u5F62\u5F0F"><option value="signed" selected>10\u9032\u6570</option><option value="hex">16\u9032\u6570</option><option value="binary">2\u9032\u6570</option></select>
 <span class="legend write" title="\u66F4\u65B0\u30FB\u53C2\u7167\u306E\u4E21\u65B9\u306E\u5834\u5408\u3082\u3053\u306E\u8868\u793A">\u66F8\u8FBC</span><span class="legend read">\u53C2\u7167</span></header>
@@ -697,7 +726,20 @@ function activate(context) {
       if (state.disposed) return;
       version = document.version;
       diagnostics.delete(uri);
-      const result = await executeWithInput(assemble(document.getText()), (request) => readInput(request, state.cancellation.token));
+      const program = assemble(document.getText());
+      const executionToken = state.cancellation.token;
+      const result = await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: "CASL II \u3092\u5B9F\u884C\u4E2D", cancellable: true },
+        async (_, token) => {
+          const listener = token.onCancellationRequested(() => state.cancellation.cancel());
+          try {
+            if (token.isCancellationRequested) state.cancellation.cancel();
+            return await executeWithInput(program, (request) => readInput(request, executionToken), Infinity, executionToken);
+          } finally {
+            listener.dispose();
+          }
+        }
+      );
       if (state.disposed) return;
       if (!state.panel) {
         const panel = vscode.window.createWebviewPanel("casl2.trace", "CASL II \u5B9F\u884C\u5C65\u6B74", vscode.ViewColumn.Beside, { enableScripts: true, localResourceRoots: [] });
