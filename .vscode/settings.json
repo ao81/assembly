@@ -1,0 +1,17 @@
+{
+	// コピー時に文字色を保持
+	"editor.copyWithSyntaxHighlighting": true,
+	// 自動補完候補を無効化
+	"editor.quickSuggestions": false,
+	"editor.suggestOnTriggerCharacters": false,
+	"editor.inlineSuggest.enabled": false,
+	"editor.parameterHints.enabled": false,
+	"editor.tabCompletion": "off",
+	// 変数名の候補を非表示
+	"editor.suggest.showVariables": false,
+	// ファイル内に存在する単語・変数名の候補を無効化
+	"editor.wordBasedSuggestions": "off",
+	"editor.suggest.showWords": false,
+	// Enterキーによる候補の確定を無効化
+	"editor.acceptSuggestionOnEnter": "off"
+}
