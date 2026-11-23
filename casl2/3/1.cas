@@ -1,0 +1,34 @@
+KADAI2  START
+        IN      BUF,LEN
+        LAD     GR1,BUF
+        LD      GR2,LEN
+        CALL    REV
+        OUT     BUF,LEN
+        RET
+
+REV     RPUSH
+        LD      GR3,GR1
+        ADDL    GR3,GR2
+
+PUS     CPL     GR1,GR3
+        JZE     BACK
+        LD      GR4,0,GR1
+        PUSH    0,GR4
+        LAD     GR1,1,GR1
+        JUMP    PUS
+
+BACK    SUBL    GR1,GR2
+
+PO      CPL     GR1,GR3
+        JZE     DONE
+        POP     GR4
+        ST      GR4,0,GR1
+        LAD     GR1,1,GR1
+        JUMP    PO
+
+DONE    RPOP
+        RET
+
+BUF     DS      256
+LEN     DS      1
+        END
