@@ -1,0 +1,40 @@
+KADAI2  START
+; 入出力処理
+        IN      BUF,LEN
+        LAD     GR1,BUF
+        LD      GR2,LEN
+        CALL    PUS
+        OUT     BUF,LEN
+        RET
+
+; PUSH処理
+PUS     RPUSH
+        LD      GR3,GR1
+        LD      GR4,GR2
+
+PUSLP   CPL     GR4,=0
+        JZE     PO
+        LD      GR5,0,GR3
+        PUSH    0,GR5
+        LAD     GR3,1,GR3
+        SUBA    GR4,=1
+        JUMP    PUSLP
+
+; POP処理
+PO      LD      GR3,GR1
+        LD      GR4,GR2
+
+POLP    CPL     GR4,=0
+        JZE     DONE
+        POP     GR5
+        ST      GR5,0,GR3
+        LAD     GR3,1,GR3
+        SUBA    GR4,=1
+        JUMP    POLP
+
+DONE    RPOP
+        RET
+
+BUF     DS      256
+LEN     DS      1
+        END
