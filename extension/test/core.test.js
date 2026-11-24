@@ -47,6 +47,30 @@ test('CPAは符号付き、CPLは符号なしで比較する', () => {
   assert.deepEqual(result.rows[1].flags, { OF: 0, SF: 1, ZF: 0 });
   assert.deepEqual(result.rows[2].flags, { OF: 0, SF: 0, ZF: 0 });
 });
+test('文字リテラルをロード・比較し、小文字と大文字を区別する', () => {
+  const result = run(" LD GR1,='a'\n CPL GR1,='A'\n CPA GR1,='a'\n RET");
+  assert.equal(result.status, 'completed');
+  assert.equal(result.rows[0].gr[1], 0x61);
+  assert.equal(result.rows[1].flags.ZF, 0);
+  assert.equal(result.rows[2].flags.ZF, 1);
+  assert.deepEqual(result.rows[0].accesses, result.rows[2].accesses);
+});
+test('文字列リテラルはDCと同じ形式で格納し、指標付きで参照できる', () => {
+  const program = assemble("TEST START\n LAD GR1,='a,;''ｶ' ; comment\n LAD GR2,3\n LD GR3,='a,;''ｶ',GR2\n RET\nDATA DC 'a,;''ｶ'\n END");
+  const literalAddress = program.memory[program.entry + 1];
+  assert.equal(literalAddress, program.symbols.get('DATA') + 5);
+  assert.deepEqual(Array.from(program.memory.slice(literalAddress, program.end)), [0x61, 0x2c, 0x3b, 0x27, 0xb6]);
+  const result = execute(program);
+  assert.equal(result.rows[0].gr[1], literalAddress);
+  assert.equal(result.rows[2].gr[3], 0x27);
+});
+test('文字リテラルの不正な指定と領域超過は該当行でエラーになる', () => {
+  assert.throws(() => run(" LD GR1,='あ'\n RET"), /2行:.*半角/);
+  assert.throws(() => run(" LD GR1,='a\n RET"), /2行:/);
+  const fits = assemble("TEST START\n LD GR1,='ab'\n RET\nAREA DS 61179\n END");
+  assert.equal(fits.end, 0xff00);
+  assert.throws(() => run(" LD GR1,='abc'\n RET\nAREA DS 61179"), /2行:.*リテラル領域/);
+});
 test('LDのフラグ、論理演算、指標修飾、STARTの開始ラベル', () => {
   const result = execute(assemble('TEST START MAIN\nDATA DC 1,2\nMAIN LAD GR2,1\n LD GR1,DATA,GR2\n XOR GR1,GR1\n RET\n END'));
   assert.equal(result.rows[1].gr[1], 2);

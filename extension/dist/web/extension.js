@@ -42,6 +42,14 @@ var require_core = __commonJS({
       }
       return word(value);
     }
+    function constantWords(text, line) {
+      if (!/^'(?:[^']|'')+'$/.test(text)) return [numeric(text, line)];
+      try {
+        return Array.from(text.slice(1, -1).replace(/''/g, "'"), encodeChar);
+      } catch (error) {
+        throw new CaslError2(line, error.message);
+      }
+    }
     function containsData(ranges, address, size) {
       return ranges.some(([start, end]) => address >= start && address + size <= end);
     }
@@ -110,14 +118,7 @@ var require_core = __commonJS({
         }
         if (op === "DC") {
           if (!args.length) fail();
-          data = args.flatMap((arg) => {
-            if (!/^'(?:[^']|'')+'$/.test(arg)) return [numeric(arg, line)];
-            try {
-              return Array.from(arg.slice(1, -1).replace(/''/g, "'"), encodeChar);
-            } catch (error) {
-              throw new CaslError2(line, error.message);
-            }
-          });
+          data = args.flatMap((arg) => constantWords(arg, line));
           size = data.length;
           form = "data";
         } else if (op === "DS") {
@@ -159,9 +160,8 @@ var require_core = __commonJS({
         } else throw new CaslError2(line, `\u672A\u5BFE\u5FDC\u306E\u547D\u4EE4\u3067\u3059: ${op}\uFF08\u5BFE\u5FDC\u7BC4\u56F2\u306FREADME\u3092\u53C2\u7167\uFF09`);
         if (form === "address" || form === "target") {
           const operand = args[form === "target" ? 0 : 1];
-          if (operand.startsWith("=")) {
-            const value = numeric(operand.slice(1), line);
-            if (!literals.has(operand)) literals.set(operand, { value, line });
+          if (operand.startsWith("=") && !literals.has(operand)) {
+            literals.set(operand, { words: constantWords(operand.slice(1), line), line });
           }
         }
         if (address + size > 65280) throw new CaslError2(line, "\u30D7\u30ED\u30B0\u30E9\u30E0\u9818\u57DF\u304C\u4E0A\u9650\u3092\u8D85\u3048\u307E\u3057\u305F\u3002");
@@ -177,9 +177,10 @@ var require_core = __commonJS({
       }
       if (!started || !ended) throw new CaslError2(startLine, "START\u3068END\u304C\u5FC5\u8981\u3067\u3059\u3002");
       for (const literal of literals.values()) {
-        if (address >= 65280) throw new CaslError2(literal.line, "\u30EA\u30C6\u30E9\u30EB\u9818\u57DF\u304C\u4E0A\u9650\u3092\u8D85\u3048\u307E\u3057\u305F\u3002");
+        if (address + literal.words.length > 65280) throw new CaslError2(literal.line, "\u30EA\u30C6\u30E9\u30EB\u9818\u57DF\u304C\u4E0A\u9650\u3092\u8D85\u3048\u307E\u3057\u305F\u3002");
         literal.address = address;
-        memory[address++] = literal.value;
+        memory.set(literal.words, address);
+        address += literal.words.length;
       }
       const resolve = (text, line) => {
         if (literals.has(text)) return literals.get(text).address;

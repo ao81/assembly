@@ -30,6 +30,12 @@ function numeric(text, line, address = false) {
   return word(value);
 }
 
+function constantWords(text, line) {
+  if (!/^'(?:[^']|'')+'$/.test(text)) return [numeric(text, line)];
+  try { return Array.from(text.slice(1, -1).replace(/''/g, "'"), encodeChar); }
+  catch (error) { throw new CaslError(line, error.message); }
+}
+
 function containsData(ranges, address, size) {
   return ranges.some(([start, end]) => address >= start && address + size <= end);
 }
@@ -87,11 +93,7 @@ function assemble(source) {
     }
     if (op === 'DC') {
       if (!args.length) fail();
-      data = args.flatMap(arg => {
-        if (!/^'(?:[^']|'')+'$/.test(arg)) return [numeric(arg, line)];
-        try { return Array.from(arg.slice(1, -1).replace(/''/g, "'"), encodeChar); }
-        catch (error) { throw new CaslError(line, error.message); }
-      });
+      data = args.flatMap(arg => constantWords(arg, line));
       size = data.length; form = 'data';
     } else if (op === 'DS') {
       if (args.length !== 1 || !/^\d+$/.test(args[0])) fail();
@@ -119,9 +121,8 @@ function assemble(source) {
     } else throw new CaslError(line, `未対応の命令です: ${op}（対応範囲はREADMEを参照）`);
     if (form === 'address' || form === 'target') {
       const operand = args[form === 'target' ? 0 : 1];
-      if (operand.startsWith('=')) {
-        const value = numeric(operand.slice(1), line);
-        if (!literals.has(operand)) literals.set(operand, { value, line });
+      if (operand.startsWith('=') && !literals.has(operand)) {
+        literals.set(operand, { words: constantWords(operand.slice(1), line), line });
       }
     }
     if (address + size > 0xff00) throw new CaslError(line, 'プログラム領域が上限を超えました。');
@@ -137,8 +138,10 @@ function assemble(source) {
   }
   if (!started || !ended) throw new CaslError(startLine, 'STARTとENDが必要です。');
   for (const literal of literals.values()) {
-    if (address >= 0xff00) throw new CaslError(literal.line, 'リテラル領域が上限を超えました。');
-    literal.address = address; memory[address++] = literal.value;
+    if (address + literal.words.length > 0xff00) throw new CaslError(literal.line, 'リテラル領域が上限を超えました。');
+    literal.address = address;
+    memory.set(literal.words, address);
+    address += literal.words.length;
   }
   const resolve = (text, line) => {
     if (literals.has(text)) return literals.get(text).address;
